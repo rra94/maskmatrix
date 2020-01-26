@@ -162,8 +162,8 @@ class MSCOCO(DETECTION):
 
                     detections.append(detection)
         return detections
-
-    def evaluate(self, result_json, cls_ids, image_ids, gt_json=None):
+    
+    def evaluate_rpn(self, result_json, cls_ids, image_ids, gt_json=None):
         if self._split == "testdev":
             return None
 
@@ -176,7 +176,12 @@ class MSCOCO(DETECTION):
         coco_eval = COCOeval(coco, coco_dets, "bbox")
         coco_eval.params.imgIds = eval_ids
         coco_eval.params.catIds = cat_ids
+        coco_eval.params.useCats = 0
+        #coco_eval.params.iouThrs = [0.1:0.1:1.0]
         coco_eval.evaluate()
         coco_eval.accumulate()
         coco_eval.summarize()
         return coco_eval.stats[0], coco_eval.stats[12:]
+    
+
+

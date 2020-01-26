@@ -349,7 +349,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 
     # allocating memory
     images      = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32)
-    anchors_heatmaps = [np.zeros((batch_size, categories, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
+    anchors_heatmaps = [np.zeros((batch_size, 1, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
     
     tl_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     br_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
@@ -373,7 +373,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         
         # reading detections
         detections = db.detections(db_ind)
-        
+         
         if cutout_flag:
             image = cutout(image, detections)
 
@@ -405,7 +405,9 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             
                 width_ratio = output_sizes[olayer_idx][1] / input_size[1]
                 height_ratio = output_sizes[olayer_idx][0] / input_size[0]
-
+               # if categories ==1:
+                #    category = 0 
+                #else:
                 category = int(detection[-1]) - 1
                 xtl, ytl = detection[0], detection[1]
                 xbr, ybr = detection[2], detection[3]
@@ -433,11 +435,11 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                         radius = max(0, int(radius))
                     else:
                         radius = gaussian_rad
-
-                    draw_gaussian(anchors_heatmaps[olayer_idx][b_ind, category], [xc, yc], radius)
+                    #for RPN cange 1 to categoy
+                    draw_gaussian(anchors_heatmaps[olayer_idx][b_ind, 0], [xc, yc], radius)
 
                 else:
-                    anchors_heatmaps[olayer_idx][b_ind, category, yc, xc] = 1
+                    anchors_heatmaps[olayer_idx][b_ind, 0, yc, xc] = 1
 
                 tag_ind = tag_lens[olayer_idx][b_ind]
                 min_y, max_y , min_x, max_x = map(lambda x: x/8/2, base_layer_range)

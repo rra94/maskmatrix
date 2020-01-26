@@ -222,11 +222,11 @@ def _nms(heat, kernel=1):
 
 def _topk(scores, K=20):
     batch, cat, height, width = scores.size()
-
+    #print(scores.view(batch, -1).shape)
     topk_scores, topk_inds = torch.topk(scores.view(batch, -1), K)
 
     topk_clses = (topk_inds / (height * width)).int()
-
+    #print(topk_clses)
     topk_inds = topk_inds % (height * width)
     topk_ys   = (topk_inds / width).int().float()
     topk_xs   = (topk_inds % width).int().float()

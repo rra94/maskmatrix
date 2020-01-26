@@ -11,43 +11,53 @@ from .matrixnet import _sigmoid, MatrixNet, _gather_feat, _tranpose_and_gather_f
 
 class SubNet(nn.Module):
 
-    def __init__(self, mode, classes=80, depth=4,
+    def __init__(self, mode, depth=4,
                  base_activation=F.relu,
                  output_activation=F.sigmoid):
         super(SubNet, self).__init__()
-        self.classes = classes
         self.depth = depth
         self.base_activation = base_activation
         self.output_activation = output_activation
-
         self.subnet_base = nn.ModuleList([conv3x3(256, 256, padding=1)
                                           for _ in range(depth)])
-
         if mode == 'corners':
-            self.subnet_output = conv3x3(256, 4, padding=1)
-            
+            self.subnet_output = conv3x3(256, 4, padding=1) 
         if mode == 'tl_corners':
             self.subnet_output = conv3x3(256, 2, padding=1)
         if mode == 'br_corners':
             self.subnet_output = conv3x3(256, 2, padding=1)
-            
-        elif mode == 'classes':
+        if mode == 'classes':
             # add an extra dim for confidence
             self.subnet_output = conv3x3(256, 1, padding=1)
 
     def forward(self, x):
         for layer in self.subnet_base:
             x = self.base_activation(layer(x))
+        
         x = self.subnet_output(x)
         return x   
 
-    
-class MatrixNetAnchors(nn.Module):
-    def __init__(self, classes, resnet, layers):
-        super(MatrixNetAnchors, self).__init__()
-        self.classes = classes
-        self.resnet = resnet
+#this is main 2 stage module
+class MatrixNet2Stage(nn.Module):
+    def __init__(self,classes, resnet, rpn_head, roi, layers):
+        self.backbone = MatrixNetAnchorsBackbone(resnet, layers)
+        self.rpn = MaxtrixNetAnchorsRPN(classes, self.backbone, layers)
+        self.roi = MatrixNetsAnchorsROI()
+        self.predictor = MatrixNetPredictor()
+        
+        rpn_pre_nms_top_n = dict(training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test)
+        rpn_post_nms_top_n = dict(training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test)
 
+        super(MatrixNets2Stage, self).__init__(backbone, rpn, roi_heads, transform)
+
+    
+   
+  
+#this is the feature extractor
+class MatrixNetAnchorsBackbone(nn.Module):
+    def __init__(self,  resnet, layers):
+        super(MatrixNetAnchors, self).__init__()
+        self.resnet = resnet
         if self.resnet == "resnext101_32x8d":
             _resnet = resnext101_32x8d(pretrained=True)
         elif self.resnet == "resnet101":
@@ -56,32 +66,54 @@ class MatrixNetAnchors(nn.Module):
             _resnet = resnet50_features(pretrained =True)
         elif self.resnet == "resnet152":
             _resnet = resnet152_features(pretrained =True)
-
         try: 
             self.matrix_net = MatrixNet(_resnet, layers)
         except : 
             print("ERROR: ivalid resnet")
             sys.exit()
-
-        self.subnet_tl_corners_regr = SubNet(mode='tl_corners')
-        self.subnet_br_corners_regr = SubNet(mode='br_corners')
-        self.subnet_anchors_heats = SubNet(mode='classes')
-
+    
     def forward(self, x):
         features = self.matrix_net(x)
-        anchors_tl_corners_regr = [self.subnet_tl_corners_regr(feature) for feature in features]
-        anchors_br_corners_regr = [self.subnet_br_corners_regr(feature) for feature in features]
-        anchors_heatmaps = [_sigmoid(self.subnet_anchors_heats(feature)) for feature in features]
+        return features
+
+#this is the RPN
+class MatrixNetAnchorsRPN(nn.Module):
+    def __init__(self, classes, features, layers):
+        super(MatrixNetAnchors, self).__init__()
+        self.features = features
+        self.subnet_tl_corners_regr = SubNet(mode='tl_corners')
+        self.subnet_br_corners_regr = SubNet(mode='br_corners')
+        self.subnet_anchors_heats = SubNet(mode='objectness')
+
+    def forward(self, x):
+        anchors_tl_corners_regr = [self.subnet_tl_corners_regr(feature) for feature in self.features]
+        anchors_br_corners_regr = [self.subnet_br_corners_regr(feature) for feature in self.features]
+        anchors_heatmaps = [_sigmoid(self.subnet_anchors_heats(feature)) for feature in self.features]
         return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr
-    
-    
+
+# This is the prediction layer
+class MatrixNetPredictor(nn.module):
+    def __init__(self, in_channels, num_classes):
+        super(FastRCNNPredictor, self).__init__()
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_pred = nn.Linear(in_channels, num_classes * 4)
+        def forward(self, x):
+            if x.dim() == 4:
+                assert list(x.shape[2:]) == [1, 1]
+            x = x.flatten(start_dim=1)
+            scores = self.cls_score(x)
+            bbox_deltas = self.bbox_pred(x)
+    return scores, bbox_deltas
+
+
+#this is trainer
 class model(nn.Module):
     def __init__(self, db):
         super(model, self).__init__()
         classes = db.configs["categories"]
         resnet  = db.configs["backbone"]
         layers  = db.configs["layers_range"]
-        self.net = MatrixNetAnchors(classes, resnet, layers)
+        self.net = MatrixNet2stage(classes, resnet, layers)
         self._decode = _decode
         
     def _train(self, *xs):
@@ -122,8 +154,6 @@ class MatrixNetAnchorsLoss(nn.Module):
         anchors_heats = outs[0]
         anchors_tl_corners_regrs = outs[1]
         anchors_br_corners_regrs = outs[2]
-        #print(anchors_heats[1].shape)
-
         gt_anchors_heat = targets[0]
         gt_tl_corners_regr = targets[1]
         gt_br_corners_regr = targets[2]
@@ -138,26 +168,22 @@ class MatrixNetAnchorsLoss(nn.Module):
             rloss, num = self.regr_loss(anchors_br_corners_regrs[i], gt_br_corners_regr[i], gt_mask[i])
             numr += num
             corner_regr_loss += rloss
-            
             rloss, num = self.regr_loss(anchors_tl_corners_regrs[i], gt_tl_corners_regr[i], gt_mask[i])
             numr += num
             corner_regr_loss += rloss            
-
         if numr > 0:
             corner_regr_loss = corner_regr_loss / numr
-           
         if numf > 0:
-            focal_loss = focal_loss / numf
-            
-#       
+            focal_loss = focal_loss / numf       
         loss = (focal_loss + corner_regr_loss)
         return loss.unsqueeze(0)
-    
+
 loss = MatrixNetAnchorsLoss()
 
+#this is predict module
 def _decode(
     anchors_heats, corners_tl_regrs, corners_br_regrs,
-    K=2000, kernel=1, dist_threshold=0.2, num_dets=1000,layers_range = None,
+    K=100, kernel=1, dist_threshold=0.2, num_dets=1000,layers_range = None,
     output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
 ):
     top_k = K
@@ -167,15 +193,13 @@ def _decode(
         
         
         anchors_heat = anchors_heats[i]
-        #print(anchors_heat.shape)
         corners_tl_regr = corners_tl_regrs[i]
         corners_br_regr = corners_br_regrs[i]
 
         batch, cat, height, width = anchors_heat.size()
         height_scale = height_0 / height
         width_scale = width_0 / width
-        
-        K = min(top_k, width * height)
+    
         anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K=K)
 
         anchors_ys = anchors_ys.view(batch, K, 1)
@@ -232,7 +256,7 @@ def _decode(
             detections = torch.cat([detections, torch.cat([bboxes, scores,scores,scores, clses], dim=2)], dim = 1)
    
     
-    top_scores, top_inds = torch.topk(detections[:, :, 4],1000)
+    top_scores, top_inds = torch.topk(detections[:, :, 4], 300)
     detections = _gather_feat(detections, top_inds)
     return detections
 
