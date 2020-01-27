@@ -166,7 +166,7 @@ def samples_MatrixNetCorners(db, k_ind, data_aug, debug):
     
     fpn_flag = set(_dict.keys()) == set([11,22,33,44,55])
     # allocating memory
-    
+    print(fpn_flag) 
     images      = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32)
     tl_heatmaps = [np.zeros((batch_size, categories, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
     br_heatmaps = [np.zeros((batch_size, categories, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
@@ -353,8 +353,9 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     
     layers_range=[_dict[i] for i in sorted(_dict)]
     fpn_flag = set(_dict.keys()) == set([11,22,33,44,55]) #creating fpn flag
-    
-    # allocating memory
+    print("-------------FPN-----", fpn_flag, _dict) 
+    print("-------------FPN-----", fpn_flag) #allocating memory
+    print("-------------FPN-----", fpn_flag)
     images      = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32)
     anchors_heatmaps = [np.zeros((batch_size, 1, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
     

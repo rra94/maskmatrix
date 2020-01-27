@@ -5,7 +5,7 @@
         "sampling_function": "anchors_detection_matrixnets",
 	"model_name": "MatrixNetAnchors",
 
-        "train_split": "train2017",
+        "train_split": "val2017",
         "val_split": "val2017",
 
         "learning_rate": 0.00005,
@@ -16,12 +16,12 @@
         "opt_algo": "adam",
         "prefetch_size":6,
 
-        "max_iter": 500000,
-        "stepsize": 130005,
+        "max_iter": 150000,
+        "stepsize": 130000,
         "snapshot": 10000,
 
         "chunk_sizes": [7,8],
-	"cache_dir" : "./MatrixNetAnchorsResnet50_48LayerRange_640isize",
+	"cache_dir" : "./MatrixNetAnchorsResnet50_FPN_48LayerRange_640isize",
 	"data_dir": "./data/"
     },
 
@@ -42,11 +42,11 @@
    
        "output_kernel_size": 1 ,
        "base_layer_range":[24,48,24,48],
-       "layers_range": [[[0,48,0,48],[48,96,0,48],[96,192,0,48], -1, -1],
-                 [[0,48,48,96],[48,96,48,96],[96,192,48,96],[192,384,0,96], -1],
-                 [[0,48,96,192],[48,96,96,192],[96,192,96,192],[192,384,96,192],[384,2000,96,192]],
-                 [-1, [0,96,192,384],[96,192,192,384],[192,384,192,384],[384,2000,192,384]],
-                 [-1, -1, [0,192,384,2000],[192,384,384,2000],[384,2000,384,2000]]] ,
+       "layers_range": [[[0,48,0,48],-1,-1, -1, -1],
+                 [-1,[48,96,48,96],-1,-1, -1],
+                 [-1,-1,[96,192,96,192],-1, -1],
+                 [-1, -1, -1,[192,384,192,384],-1],
+                 [-1, -1, -1, -1 ,[384,2000,384,2000]]] ,
         
         
 	
