@@ -178,7 +178,7 @@ class MSCOCO(DETECTION):
         coco_eval.params.catIds = cat_ids
         coco_eval.params.useCats = 0
         coco_eval.params.areaRng = [[0 ** 2, 1e5 ** 2]]
-        coco_eval.params.maxDets = [2000]
+        coco_eval.params.maxDets = [100,500,2000]
         #coco_eval.params.iouThrs = [0.1:0.1:1.0]
         coco_eval.evaluate()
         coco_eval.accumulate()
@@ -186,7 +186,9 @@ class MSCOCO(DETECTION):
         print(rc.shape)
         print(coco_eval.eval["counts"])
         print(rc[:, -1, -1, -1])
-        #coco_eval.summarize()
+        print(rc)
+        print(coco_eval.eval['params'])
+        coco_eval.summarize()
         return coco_eval.stats
     
 

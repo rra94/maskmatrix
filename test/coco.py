@@ -354,7 +354,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         top_bboxes[image_id] = {}
         for j in range(1) : #categories):
             #keep_inds = 1
-            top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:7].astype(np.float32)
+            top_bboxes[image_id][j + 1] = detections[:, 0:7].astype(np.float32)
 
             #if  merge_bbox:
             #    soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)

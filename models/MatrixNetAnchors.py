@@ -232,7 +232,7 @@ def _decode(
             detections = torch.cat([detections, torch.cat([bboxes, scores,scores,scores, clses], dim=2)], dim = 1)
    
     
-    top_scores, top_inds = torch.topk(detections[:, :, 4],10000)
+    top_scores, top_inds = torch.topk(detections[:, :, 4],min(10000, detections.shape[1] ))
     detections = _gather_feat(detections, top_inds)
     return detections
 
