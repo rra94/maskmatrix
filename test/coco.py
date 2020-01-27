@@ -415,17 +415,19 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             print(debug_file)
             cv2.imwrite(debug_file,image)
 
-    result_json = os.path.join(result_dir, "results.json")
-
-    detections  = db.convert_to_coco(top_bboxes)
-
-    with open(result_json, "w") as f:
-        json.dump(detections, f)
+    #result_json = os.path.join(result_dir, "results.json")
     
-    cls_ids   = list(range(1, categories + 1))
+    #detections  = db.convert_to_coco(top_bboxes)
+
+    #with open(result_json, "w") as f:
+    #    json.dump(detections, f)
+    
+    cls_ids   = list(range(1, 1 + 1))
     image_ids = [db.image_ids(ind) for ind in db_inds]
     #print(image_ids)
-    db.evaluate_rpn(result_json, cls_ids, image_ids)
+    detections=db.convert_to_numpy(top_bboxes)
+    print(detections.shape)
+    db.evaluate_rpn(detections, cls_ids, image_ids)
     return 0
 
 

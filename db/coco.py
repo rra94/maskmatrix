@@ -162,7 +162,23 @@ class MSCOCO(DETECTION):
 
                     detections.append(detection)
         return detections
-    
+
+    def convert_to_numpy(self, all_bboxes):
+       detections = []
+       for image_id in all_bboxes:
+           coco_id = self._coco_eval_ids[image_id]
+           for cls_ind in all_bboxes[image_id]:
+               category_id = self._classes[cls_ind]
+               for bbox in all_bboxes[image_id][cls_ind]:
+                   bbox[2] -= bbox[0]
+                   bbox[3] -= bbox[1]
+                   score = bbox[4]
+                   bbox  = list(map(self._to_float, bbox[0:4]))
+                   detection = [coco_id, bbox[0], bbox[1], bbox[2], bbox[3], float("{:.2f}".format(score)), category_id]
+                   detections.append(detection)
+       return np.array(detections)
+
+
     def evaluate_rpn(self, result_json, cls_ids, image_ids, gt_json=None):
         if self._split == "testdev":
             return None
