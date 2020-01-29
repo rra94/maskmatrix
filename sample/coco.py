@@ -392,7 +392,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 
         image, detections = _resize_image(image, detections, input_size)
         detections = _clip_detections(image, detections)
-        
+        detections[:,-1]+=1 
         # flipping an image randomly
 
         if not debug and np.random.uniform() > 0.5:
@@ -409,7 +409,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         images[b_ind] = image.transpose((2, 0, 1))
         
         detections_batch[b_ind][:len(detections),1:6] = detections
-        detections_batch[b_ind][len(detections):] = [-1]*7
+        detections_batch[b_ind][len(detections):] = [0]*7
 
         for ind, detection in enumerate(detections):
             for olayer_idx in layer_map_using_ranges(detection[2] - detection[0], detection[3] - detection[1],layers_range, fpn_flag):

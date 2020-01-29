@@ -9,6 +9,7 @@ from .py_utils.utils import conv1x1, conv3x3
 from .matrixnet import _sigmoid, MatrixNet, _gather_feat, _tranpose_and_gather_feat, _topk, _nms
 from .proposal_target_layer_cascade import _ProposalTargetLayer
 import numpy as np
+import torchvision.ops.roi_align as roi_align
 
 class SubNet(nn.Module):
 
@@ -73,7 +74,7 @@ class MatrixNetAnchors(nn.Module):
         anchors_tl_corners_regr = [self.subnet_tl_corners_regr(feature) for feature in features]
         anchors_br_corners_regr = [self.subnet_br_corners_regr(feature) for feature in features]
         anchors_heatmaps = [_sigmoid(self.subnet_anchors_heats(feature)) for feature in features]
-        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr
+        return features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr
     
     
 class model(nn.Module):
@@ -82,23 +83,32 @@ class model(nn.Module):
         classes = db.configs["categories"]
         resnet  = db.configs["backbone"]
         layers  = db.configs["layers_range"]
+        POOLING_SIZE = 7
         self.net = MatrixNetAnchors(classes, resnet, layers)
         self._decode = _decode
         self.proposals_generators = ProposalGenerator(db)
         self.proposal_target_layer = _ProposalTargetLayer(classes)
+        self.RCNN_roi_align = RoIAlignAvg(POOLING_SIZE, POOLING_SIZE, 1.0/16.0)
+        self.RCNN_cls_score = nn.Linear(2048, classes)
+        self.RCNN_bbox_pred = nn.Linear(2048, 4 *classes)
+
     def _train(self, *xs):
         image = xs[0][0]
         gt_rois = xs[2][0]
         anchors_inds = xs[1]
-        outs = self.net.forward(image)
-        rois = self.proposals_generators(outs)
-        
+        features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.net.forward(image)
+        rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr) 
         rois, labels, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
-        
-        for ind in range(len(anchors_inds)):
-            outs[1][ind] = _tranpose_and_gather_feat(outs[1][ind], anchors_inds[ind])
-            outs[2][ind] = _tranpose_and_gather_feat(outs[2][ind], anchors_inds[ind])
-        return outs
+        pooled_feat = self.RCNN_roi_align(features,rois.view(-1,7))
+        bbox_pred = self.RCNN_bbox_pred(pooled_feat)
+        bbox_pred_view = bbox_pred.view(bbox_pred.size(0), int(bbox_pred.size(1) / 4), 4)
+        bbox_pred_select = torch.gather(bbox_pred_view, 1, rois_label.view(rois_label.size(0), 1, 1).expand(rois_label.size(0), 1, 4))
+        bbox_pred = bbox_pred_select.squeeze(1)
+
+        cls_score = self.RCNN_cls_score(pooled_feat)
+        cls_prob = F.softmax(cls_score, 1)
+
+        return rois, cls_prob, bbox_pred, rpn_loss_cls, rpn_loss_bbox, RCNN_loss_cls, RCNN_loss_bbox, rois_label
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
@@ -160,6 +170,24 @@ class MatrixNetAnchorsLoss(nn.Module):
     
 loss = MatrixNetAnchorsLoss()
 
+class RoIAlignAvg(nn.Module):
+    def __init__ (self, aligned_height, aligned_width, spatial_scale):
+        super(RoIAlignAvg, self).__init__()
+
+        self.aligned_width = int(aligned_width)
+        self.aligned_height = int(aligned_height)
+        self.spatial_scale = float(spatial_scale)
+
+    def forward(self, features, rois):
+        pooled_feats=[]
+        for roi in rois:
+            rois_cords = roi[1:5]
+            layer = int(roi[6])
+            x =  roi_align(features[layer], rois_cords, output_size=(self.aligned_width, self.aligned_height), spatial_scale = self.spatial_scale)
+            pooled_feats.append(F.avg_pool2d(x, kernel_size=2, stride=1))
+        return pooled_feats
+
+
 class ProposalGenerator(nn.Module):
     def __init__ (self, db):
         super(ProposalGenerator, self).__init__() 
@@ -167,8 +195,8 @@ class ProposalGenerator(nn.Module):
         self.num_dets = db.configs["num_dets"]
         self.base_layer_range = db.configs["base_layer_range"]
                 
-    def forward(self, feats):
-        anchors_heats, corners_tl_regrs, corners_br_regrs = feats
+    def forward(self, anchors_heats, corners_tl_regrs, corners_br_regrs):
+        
         top_k = self.K 
         batch, cat, height_0, width_0 = anchors_heats[0].size()
         layer_detections = [None for i in range(len(anchors_heats))]
@@ -216,9 +244,14 @@ class ProposalGenerator(nn.Module):
             bboxes[:, :, 3] *= height_scale
             #if i == 0
             #print(scores) 
-            layer_detections[i] = torch.cat([scores ,bboxes, scores, scores], dim =2)
-            layer_detections[i][ :, 5] = 0.0  #fix
-            layer_detections[i][:,6] = i #fic
+            layer_detections[i] = torch.cat([scores ,bboxes], dim =2)
+            rights= torch.tensor([[[1,i]]*layer_detections[i].size(1)]*batch, requires_grad = False, dtype = torch.float32).to("cuda")
+            #print(rights)
+            #print(rights.size(), layer_detections[i].size())
+            layer_detections[i] = torch.cat([layer_detections[i] , rights],  dim =2)
+            #layer_detections[i].*requires_grad  = False
+            #layer_detections[i][ :, 5] = 0.0  #fix
+            #layer_detections[i][:,6] = i #fic
             #print(layer_detections[i])
            
             #layer_detections[i][] = bboxe
