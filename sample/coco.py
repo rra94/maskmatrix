@@ -353,12 +353,12 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     
     layers_range=[_dict[i] for i in sorted(_dict)]
     fpn_flag = set(_dict.keys()) == set([11,22,33,44,55]) #creating fpn flag
-    print("-------------FPN-----", fpn_flag, _dict) 
-    print("-------------FPN-----", fpn_flag) #allocating memory
-    print("-------------FPN-----", fpn_flag)
+    
+   
+  
     images      = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32)
     anchors_heatmaps = [np.zeros((batch_size, 1, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
-    
+    detections_batch     = np.zeros((batch_size, 50, 7), dtype=np.float32) 
     tl_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     br_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     
@@ -407,6 +407,9 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 if lighting:
                     lighting_(data_rng, image, 0.1, db.eig_val, db.eig_vec)
         images[b_ind] = image.transpose((2, 0, 1))
+        
+        detections_batch[b_ind][:len(detections),1:6] = detections
+        detections_batch[b_ind][len(detections):] = [-1]*7
 
         for ind, detection in enumerate(detections):
             for olayer_idx in layer_map_using_ranges(detection[2] - detection[0], detection[3] - detection[1],layers_range, fpn_flag):
@@ -473,9 +476,9 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     br_corners_regrs    = [torch.from_numpy(c) for c in br_corners_regrs]
     anchors_tags     = [torch.from_numpy(t) for t in anchors_tags]
     tag_masks   = [torch.from_numpy(tags) for tags in tag_masks]
-
+    detections_batch = [torch.from_numpy(detections_batch)]
     return {
-        "xs": [images, anchors_tags],
+        "xs": [images, anchors_tags, detections_batch],
         "ys": [anchors_heatmaps, tl_corners_regrs, br_corners_regrs, tag_masks]
     }, k_ind
 def sample_data(db, k_ind, data_aug=True, debug=False):

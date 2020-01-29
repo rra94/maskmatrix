@@ -7,7 +7,8 @@ from torch.autograd import Variable
 from .resnet_features import resnet152_features, resnet50_features, resnet18_features, resnet101_features, resnext101_32x8d, wide_resnet101_2
 from .py_utils.utils import conv1x1, conv3x3
 from .matrixnet import _sigmoid, MatrixNet, _gather_feat, _tranpose_and_gather_feat, _topk, _nms
-
+from .proposal_target_layer_cascade import _ProposalTargetLayer
+import numpy as np
 
 class SubNet(nn.Module):
 
@@ -83,13 +84,17 @@ class model(nn.Module):
         layers  = db.configs["layers_range"]
         self.net = MatrixNetAnchors(classes, resnet, layers)
         self._decode = _decode
-        
+        self.proposals_generators = ProposalGenerator(db)
+        self.proposal_target_layer = _ProposalTargetLayer(classes)
     def _train(self, *xs):
         image = xs[0][0]
+        gt_rois = xs[2][0]
         anchors_inds = xs[1]
         outs = self.net.forward(image)
-
-
+        rois = self.proposals_generators(outs)
+        
+        rois, labels, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
+        
         for ind in range(len(anchors_inds)):
             outs[1][ind] = _tranpose_and_gather_feat(outs[1][ind], anchors_inds[ind])
             outs[2][ind] = _tranpose_and_gather_feat(outs[2][ind], anchors_inds[ind])
@@ -97,7 +102,7 @@ class model(nn.Module):
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
-        
+    
         outs = self.net.forward(image)
         return self._decode(*outs, **kwargs)
 
@@ -154,6 +159,80 @@ class MatrixNetAnchorsLoss(nn.Module):
         return loss.unsqueeze(0)
     
 loss = MatrixNetAnchorsLoss()
+
+class ProposalGenerator(nn.Module):
+    def __init__ (self, db):
+        super(ProposalGenerator, self).__init__() 
+        self.K = db.configs["top_k"]
+        self.num_dets = db.configs["num_dets"]
+        self.base_layer_range = db.configs["base_layer_range"]
+                
+    def forward(self, feats):
+        anchors_heats, corners_tl_regrs, corners_br_regrs = feats
+        top_k = self.K 
+        batch, cat, height_0, width_0 = anchors_heats[0].size()
+        layer_detections = [None for i in range(len(anchors_heats))]
+        
+        for i in range(len(anchors_heats)):
+            anchors_heat = anchors_heats[i]
+            corners_tl_regr = corners_tl_regrs[i]
+            corners_br_regr = corners_br_regrs[i]
+            batch, cat, height, width = anchors_heat.size()
+            height_scale = 8*height_0 / height
+            width_scale = 8*width_0 / width
+        
+            K = min(top_k, width * height)
+            anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K=K)
+            anchors_ys = anchors_ys.view(batch, K, 1)
+            anchors_xs = anchors_xs.view(batch, K, 1)
+
+            if corners_br_regr is not None:
+                corners_tl_regr = _tranpose_and_gather_feat(corners_tl_regr, anchors_inds)
+                corners_tl_regr = corners_tl_regr.view(batch, K, 1, 2)
+                corners_br_regr = _tranpose_and_gather_feat(corners_br_regr, anchors_inds)
+                corners_br_regr = corners_br_regr.view(batch, K, 1, 2)
+                min_y, max_y, min_x, max_x = map(lambda x:x/8/2,self.base_layer_range) #This is the range of object sizes within the layers 
+            # We devide by 2 since we want to compute the distances from center to corners.
+                tl_xs = anchors_xs -  (((max_x - min_x) * corners_tl_regr[..., 0]) + (max_x + min_x)/2) 
+                tl_ys = anchors_ys -  (((max_y - min_y) * corners_tl_regr[..., 1]) + (max_y + min_y)/2)
+                br_xs = anchors_xs +  (((max_x - min_x) * corners_br_regr[..., 0]) + (max_x + min_x)/2)
+                br_ys = anchors_ys +  (((max_y - min_y) * corners_br_regr[..., 1]) + (max_y + min_y)/2)
+            bboxes = torch.stack((tl_xs, tl_ys, br_xs, br_ys), dim=3)
+            scores    = anchors_scores.view(batch, K, 1)
+            width_inds  = (br_xs < tl_xs)
+            height_inds = (br_ys < tl_ys)
+            scores[width_inds]  = -1
+            scores[height_inds] = -1
+            scores = scores.view(batch, -1)
+            scores, inds = torch.topk(scores, min(self.num_dets, scores.shape[1]))
+            scores = scores.unsqueeze(2)
+            bboxes = bboxes.view(batch, -1, 4)
+            bboxes = _gather_feat(bboxes, inds)
+            #clses  = anchors_clses.contiguous().view(batch, -1, 1)
+            #clses  = _gather_feat(clses, inds).float()
+            bboxes[:, :, 0] *= width_scale
+            bboxes[:, :, 1] *= height_scale
+            bboxes[:, :, 2] *= width_scale
+            bboxes[:, :, 3] *= height_scale
+            #if i == 0
+            #print(scores) 
+            layer_detections[i] = torch.cat([scores ,bboxes, scores, scores], dim =2)
+            layer_detections[i][ :, 5] = 0.0  #fix
+            layer_detections[i][:,6] = i #fic
+            #print(layer_detections[i])
+           
+            #layer_detections[i][] = bboxe
+
+            #else:
+            #    detections = torch.cat([detections, torch.cat([scores, bboxes,i], dim=2)], dim = 1)
+        detections = torch.cat(layer_detections, dim = 1 )
+        top_scores, top_inds = torch.topk(detections[:, :, 0],min(self.num_dets, detections.shape[1] ))
+        detections = _gather_feat(detections, top_inds)
+        return detections
+        
+    def backward(self):
+        pass
+
 
 def _decode(
     anchors_heats, corners_tl_regrs, corners_br_regrs,
