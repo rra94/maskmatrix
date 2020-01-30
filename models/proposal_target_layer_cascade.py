@@ -32,17 +32,17 @@ class _ProposalTargetLayer(nn.Module):
         self.BBOX_INSIDE_WEIGHTS = torch.FloatTensor([1,1,1,1])
     def forward(self, all_rois, gt_boxes):
         #gt_boxes_append = gt_boxes.new(gt_boxes.size()).zero_()
-        #print(gt_boxes_append)
+        #print(gt_boxes.shape)
         #print(gt_boxes_append.size())
         self.BBOX_INSIDE_WEIGHTS = self.BBOX_INSIDE_WEIGHTS.type_as(gt_boxes)
         #gt_boxes_append[:,:,1:5] = gt_boxes[:,:,:4]
         #gt_boxes_append(gt_boxes_append)
-        # Include ground-truth boxes in the set of candidate rois
+        # Include ground-truth boxes in the set of candidate roi
         all_rois = torch.cat([all_rois, gt_boxes], 1)
         BATCH_SIZE  = gt_boxes.shape[0] #what batch size is this?
         #print("BATCH_size-----------------", BATCH_SIZE)
         num_images = 1
-        rois_per_image = int(BATCH_SIZE / num_images)
+        rois_per_image = int(32) #int(BATCH_SIZE / num_images)
         fg_rois_per_image = int(np.round(0.25 * rois_per_image))
         fg_rois_per_image = 1 if fg_rois_per_image == 0 else fg_rois_per_image
 
@@ -121,7 +121,7 @@ class _ProposalTargetLayer(nn.Module):
         FG_THRESH = 0.5
         BG_THRESH_HI = 0.5
         BG_THRESH_LO = 0.1
-        #print(all_rois.size(), gt_boxes.size())
+        #print(all_rois.device(), gt_boxes.device())
         overlaps = bbox_overlaps_batch(all_rois, gt_boxes)
         #print(overlaps)
         max_overlaps, gt_assignment = torch.max(overlaps, 2)
