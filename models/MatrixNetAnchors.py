@@ -111,9 +111,12 @@ class model(nn.Module):
         #bbox_pred = bbox_pred_select.squeeze(1)
 
         cls_score = self.RCNN_cls_score(pooled_feat)
-        cls_prob = F.softmax(cls_score, 1)
 
-        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_prob, bbox_pred, rois_label, bbox_inside_weights, bbox_outside_weights
+        for ind in range(len(anchors_inds)):
+            anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
+            anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
+
+        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score , bbox_pred,bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
@@ -139,8 +142,8 @@ class MatrixNetAnchorsLoss(nn.Module):
         # focal loss
         focal_loss = 0
         corner_regr_loss = 0
-        print(len(outs))
-        print([i.shape for i in outs])
+        #print(len(outs))
+        
         anchors_heats = outs[0]
         anchors_tl_corners_regrs = outs[1]
         anchors_br_corners_regrs = outs[2]
@@ -171,11 +174,13 @@ class MatrixNetAnchorsLoss(nn.Module):
         if numf > 0:
             focal_loss = focal_loss / numf
         
-        rois, cls_prob, bbox_pred, rois_label, bbox_inside_weights, bbox_outside_weights = outs[4:]
+        rois, cls_score, bbox_pred, bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights = outs[3:]
         RCNN_loss_cls = 0
         RCNN_loss_bbox = 0
-        RCNN_loss_cls = F.cross_entropy(cls_score, rois_label.flatten())
-        RCNN_loss_bbox = _smooth_l1_loss(bbox_pred,  torch.reshape(bbox_targets, bbox_pred.size()), bbox_inside_weights.flatten(), bbox_outside_weights.flatten()) 
+        #print(bbox_inside_weights.shape)
+        #iprint(rois_label.flatten().shape)
+        RCNN_loss_cls = F.cross_entropy(cls_score, rois_label.flatten().long())
+        RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred,  torch.reshape(bbox_targets, bbox_pred.size()), bbox_inside_weights.view(-1,4), bbox_outside_weights.view(-1,4)) 
 
         loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox + RCNN_loss_cls
         return loss.unsqueeze(0)
@@ -217,6 +222,7 @@ class RoIAlignMatrixNet(nn.Module):
                 #print(features[i].shape, rois[b].shape)
                 #print(rois[b][:,6])
                 keep_inds = (rois[b][:,6] == i)
+                #print(keep_inds.device)
                 #print(keep_inds)
                 if (torch.sum(keep_inds) == 0):
                     continue
@@ -228,15 +234,15 @@ class RoIAlignMatrixNet(nn.Module):
             pooled_feats = torch.cat(pooled_feats, dim =1)
             pooled_feats = torch.unsqueeze(pooled_feats, dim = 0)
             batch_pooled_feats.append(pooled_feats)
-        print(batch_pooled_feats[0].size())
+        #print(batch_pooled_feats[0].size())
         batch_pooled_feats = torch.cat(batch_pooled_feats, dim=1)
-        print(batch_pooled_feats.size())
+        #print(batch_pooled_feats.size())
         #batch_pooled_feats.squeeze_(0)
-        print(batch_pooled_feats.size())
+        #print(batch_pooled_feats.size())
         batch_size , n_roi, _,_, _ = batch_pooled_feats.size()
         batch_pooled_feats=batch_pooled_feats.view(batch_size*n_roi,-1)
-        print(batch_pooled_feats.size())
-        return batch_pooled_feats.view(batch_size*n_roi,-1)
+        #print(batch_pooled_feats.size())
+        return batch_pooled_feats
 
     def resize_rois(self, rois_cords, layer,height_0, width_0):
         

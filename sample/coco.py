@@ -358,7 +358,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
   
     images      = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32)
     anchors_heatmaps = [np.zeros((batch_size, 1, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
-    detections_batch     = np.zeros((batch_size, 50, 7), dtype=np.float32) 
+    detections_batch     = np.zeros((batch_size,100, 7), dtype=np.float32) 
     tl_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     br_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     
