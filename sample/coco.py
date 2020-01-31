@@ -392,7 +392,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 
         image, detections = _resize_image(image, detections, input_size)
         detections = _clip_detections(image, detections)
-        detections[:,-1]+=1 
+        #detections[:,-1]+=1 
         # flipping an image randomly
 
         if not debug and np.random.uniform() > 0.5:
@@ -419,7 +419,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                # if categories ==1:
                 #    category = 0 
                 #else:
-                category = int(detection[-1]) - 1
+                category = 0
                 xtl, ytl = detection[0], detection[1]
                 xbr, ybr = detection[2], detection[3]
 

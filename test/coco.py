@@ -251,7 +251,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     scales        = db.configs["test_scales"]
     weight_exp    = db.configs["weight_exp"]
     merge_bbox    = db.configs["merge_bbox"]
-    categories    = 1
+    categories    = db.configs["categories"]-1
     nms_threshold = db.configs["nms_threshold"]
     max_per_image = db.configs["max_per_image"]
     layers_range = db.configs["layers_range"]
@@ -337,24 +337,24 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 dets   = dets.reshape(1, -1, 8)
             
             _rescale_dets(dets, ratios, borders, sizes)
-            dets[:, :, 0:4] /= scale
+            dets[:, :, 1:5] /= scale
             detections.append(dets)
 
         detections = np.concatenate(detections, axis=1)
 
         classes    = detections[..., -1]
-        classes    = classes[0]
+        classes    = classes[0]-1
         detections = detections[0]
 
         # reject detections with negative scores
-        keep_inds  = (detections[:, 4] > 0)
-        detections = detections[keep_inds]
-        classes    = classes[keep_inds]
+        #keep_inds  = (detections[:, 4] > 0)
+        #detections = detections[keep_inds]
+        #classes    = classes[keep_inds]
 
         top_bboxes[image_id] = {}
-        for j in range(1) : #categories):
-            #keep_inds = 1
-            top_bboxes[image_id][j + 1] = detections[:, 0:7].astype(np.float32)
+        for j in range(categories):
+            keep_inds = (classes == j) 
+            top_bboxes[image_id][j + 1] = detections[:, 0:7 ].astype(np.float32)
 
             #if  merge_bbox:
             #    soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
@@ -364,21 +364,21 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
 
         scores = np.hstack([
             top_bboxes[image_id][j][:, -1] 
-            for j in range(1, 1 + 1)
+            for j in range(1, categories + 1)
         ])
         if len(scores) > max_per_image:
             kth    = len(scores) - max_per_image
             thresh = np.partition(scores, kth)[kth]
-            for j in range(1, 1 + 1):
+            for j in range(1, categories + 1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] >= thresh)
                 top_bboxes[image_id][j] = top_bboxes[image_id][j][keep_inds]
         if debug:
             image_file = db.image_file(db_ind)
             image      = cv2.imread(image_file)
             bboxes = {}
-            for j in range(1, 0, -1):
+            for j in range(categories, 1, -1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] > 0.1)
-                cat_name  = db.class_name(j)
+                cat_name  = db.class_name(j-1)
                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
                 color     = np.random.random((3, )) * 0.6 + 0.4
                 color     = color * 255
@@ -412,7 +412,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                         color, 2
                     )
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
-            print(debug_file)
+            #print(debug_file)
             cv2.imwrite(debug_file,image)
 
     #result_json = os.path.join(result_dir, "results.json")
@@ -422,11 +422,11 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     #with open(result_json, "w") as f:
     #    json.dump(detections, f)
     
-    cls_ids   = list(range(1, 1 + 1))
+    cls_ids   = list(range(1, categories + 1))
     image_ids = [db.image_ids(ind) for ind in db_inds]
     #print(image_ids)
     detections=db.convert_to_numpy(top_bboxes)
-    print(detections.shape)
+    #print(detections.shape)
     db.evaluate_rpn(detections, cls_ids, image_ids)
     return 0
 
