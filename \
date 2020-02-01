@@ -274,8 +274,8 @@ class RoIAlignMatrixNet(nn.Module):
 class ProposalGenerator(nn.Module):
     def __init__ (self, db):
         super(ProposalGenerator, self).__init__() 
-        self.K = 5000
-        self.num_dets = 10000
+        self.K = 3000
+        self.num_dets = db.configs["num_dets"]
         self.base_layer_range = db.configs["base_layer_range"]
                 
     def forward(self, anchors_heats, corners_tl_regrs, corners_br_regrs):
@@ -289,8 +289,8 @@ class ProposalGenerator(nn.Module):
             corners_tl_regr = corners_tl_regrs[i]
             corners_br_regr = corners_br_regrs[i]
             batch, cat, height, width = anchors_heat.size()
-            height_scale = height_0 / height
-            width_scale = width_0 / width
+            height_scale = 8*height_0 / height
+            width_scale = 8*width_0 / width
             K = min(top_k, width * height)
             anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K=K)
             anchors_ys = anchors_ys.view(batch, K, 1)
@@ -313,19 +313,17 @@ class ProposalGenerator(nn.Module):
             height_inds = (br_ys < tl_ys)
             scores[width_inds]  = -1
             scores[height_inds] = -1
-            #scores = scores.view(batch, -1)
-            #print(scores.shape , "score")
-            #scores, inds = torch.topk(scores, min(self.num_dets, scores.shape[1]))
-            #scores = scores.unsqueeze(2)
+            scores = scores.view(batch, -1)
+            scores, inds = torch.topk(scores, min(self.num_dets, scores.shape[1]))
+            scores = scores.unsqueeze(2)
             bboxes = bboxes.view(batch, -1, 4)
-            #bboxes = _gather_feat(bboxes, inds)
+            bboxes = _gather_feat(bboxes, inds)
             #clses  = anchors_clses.contiguous().view(batch, -1, 1)
             #clses  = _gather_feat(clses, inds).float()
             bboxes[:, :, 0] *= width_scale
             bboxes[:, :, 1] *= height_scale
             bboxes[:, :, 2] *= width_scale
             bboxes[:, :, 3] *= height_scale
-            #print(bboxes.shape, scores.shape, "yo")
             #if i == 0
             #print(scores) 
             with torch.no_grad():
@@ -347,11 +345,10 @@ class ProposalGenerator(nn.Module):
             #    detections = torch.cat([detections, torch.cat([scores, bboxes,i], dim=2)], dim = 1)
         detections = torch.cat(layer_detections, dim = 1 )
     #print(detections.shape
-        #print(detections.shape, "dets.shape")
-        #print(detections.shape)
+        print(detections.shape, "dets.shape")
+        #print(detections)
         top_scores, top_inds = torch.topk(detections[:, :, 0],min(self.num_dets, detections.shape[1] ))
         detections = _gather_feat(detections, top_inds)
-        #print(detections.shape, "yp")
         return detections
         
     def  backward(self,top,propagate_down,bottom):
@@ -365,7 +362,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         ):
        
         dets = rois.data
-        #print(dets.shape, "ddd")
+        print(dets.shape, "ddd")
         batch, rois, classes = cls_score.size()
         topk_scores, topk_inds = torch.topk(cls_score.data.view(batch, -1), K)
         topk_clses = (topk_inds / (classes)).int()

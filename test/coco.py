@@ -251,7 +251,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     scales        = db.configs["test_scales"]
     weight_exp    = db.configs["weight_exp"]
     merge_bbox    = db.configs["merge_bbox"]
-    categories    = db.configs["categories"]-1
+    categories    = db.configs["categories"]
     nms_threshold = db.configs["nms_threshold"]
     max_per_image = db.configs["max_per_image"]
     layers_range = db.configs["layers_range"]
@@ -343,7 +343,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         detections = np.concatenate(detections, axis=1)
 
         classes    = detections[..., -1]
-        classes    = classes[0]-1
+        classes    = classes[0]
         detections = detections[0]
 
         # reject detections with negative scores
@@ -376,8 +376,9 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             image_file = db.image_file(db_ind)
             image      = cv2.imread(image_file)
             bboxes = {}
-            for j in range(categories, 1, -1):
+            for j in range(categories,1, -1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] > 0.1)
+                #print(db.class_name)
                 cat_name  = db.class_name(j-1)
                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
                 color     = np.random.random((3, )) * 0.6 + 0.4
@@ -422,7 +423,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     #with open(result_json, "w") as f:
     #    json.dump(detections, f)
     
-    cls_ids   = list(range(1, categories + 1))
+    cls_ids   = list(range(1, categories))
     image_ids = [db.image_ids(ind) for ind in db_inds]
     #print(image_ids)
     detections=db.convert_to_numpy(top_bboxes)

@@ -121,9 +121,9 @@ class _ProposalTargetLayer(nn.Module):
         FG_THRESH = 0.5
         BG_THRESH_HI = 0.5
         BG_THRESH_LO = 0.0
-        #print(all_rois.device(), gt_boxes.device())
+        #print(all_rois)
         overlaps = bbox_overlaps_batch(all_rois, gt_boxes)
-        #print(overlaps.size())
+        #print(torch.sum(overlaps==-1))
         max_overlaps, gt_assignment = torch.max(overlaps, 2)
         #int(max_overlaps
         batch_size = overlaps.size(0)
@@ -141,7 +141,6 @@ class _ProposalTargetLayer(nn.Module):
         # Guard against the case when an image has fewer than max_fg_rois_per_image
         # foreground RoIs
         for i in range(batch_size):
-
             fg_inds = torch.nonzero(max_overlaps[i] >= FG_THRESH).view(-1)
             #print(fg_inds.size())
             fg_num_rois = fg_inds.numel()
