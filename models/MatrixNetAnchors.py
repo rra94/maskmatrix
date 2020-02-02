@@ -125,6 +125,7 @@ class model(nn.Module):
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
         #rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
+        #rois[:,:,1:5] = rois[:,:1:5] / 8 
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
         bbox_pred = bbox_pred.view(batch_size, nroi, 4)
         cls_score = self.RCNN_cls_score(pooled_feat)
@@ -262,8 +263,8 @@ class RoIAlignMatrixNet(nn.Module):
     def resize_rois(self, rois_cords, layer,height_0, width_0):
         
         _, _,  height, width = layer.size()
-        width_scale  = 8*width/width_0
-        height_scale = 8*height/height_0
+        width_scale  =width/(width_0*8)
+        height_scale = height/(height_0*8)
         #print(rois_cords)
         rois_cords[:,0] *= width_scale
         rois_cords[:,2] *= width_scale
@@ -289,8 +290,9 @@ class ProposalGenerator(nn.Module):
             corners_tl_regr = corners_tl_regrs[i]
             corners_br_regr = corners_br_regrs[i]
             batch, cat, height, width = anchors_heat.size()
-            height_scale = height_0 / height
-            width_scale = width_0 / width
+            height_scale = 8*height_0 / height
+            width_scale = 8*width_0 / width
+            #print(height_scale, width_scale)
             K = min(top_k, width * height)
             anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K=K)
             anchors_ys = anchors_ys.view(batch, K, 1)
@@ -330,7 +332,7 @@ class ProposalGenerator(nn.Module):
             #print(scores) 
             with torch.no_grad():
                 #layer_detections[i] = torch.tensor(np.zeros((batch,bboxes.size(1), 7)) ,dtype = torch.float, requires_grad = False, device = bboxes.device) 
-                layer_detections[i] = torch.cat([scores ,bboxes], dim =2).data
+                layer_detections[i] = torch.cat([scores , bboxes], dim =2).data
                 rights= torch.tensor([[[0,i]]*layer_detections[i].size(1)]*batch, dtype=torch.float, device = bboxes.device)
                 #print(rights)
                 #print(rights.size(), layer_detections[i].size())
@@ -363,7 +365,6 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
     ,K=2000, kernel=1,layers_range = None,dist_threshold=0.2,
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
-       
         dets = rois.data
         #print(dets.shape, "ddd")
         batch, rois, classes = cls_score.size()
@@ -376,12 +377,11 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         clses  = _gather_feat(clses,topk_inds).float()   
         #print(clses.shape, "fjfjf")
         #print(dets.shape, "sffs")
-        dets[:,:,5] = torch.squeeze(clses, 2)+1
-        
-        return dets
+        dets [:,:, 1:5] = dets[:,:,1:5] / 8
+        dets[:,:,5] = torch.squeeze(clses, 2)
+        dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,0:1], dets[:,:,5:6]], dim =2)
+        return dets_return
                 
-
-
 def _decode_(
    anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score , bbox_pred,bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses
     ,K=2000, kernel=1, dist_threshold=0.2, num_dets=1000,layers_range = None,
