@@ -279,7 +279,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     }[db.configs["nms_algorithm"]]
     
     top_bboxes = {}
-    for ind in tqdm(range(0, num_images), ncols=1, desc="locating kps"):
+    for ind in tqdm(range(0, num_images), ncols=80, desc="locating kps"):
         db_ind = db_inds[ind]
 
         image_id   = db.image_ids(db_ind)

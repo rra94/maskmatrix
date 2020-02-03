@@ -56,11 +56,11 @@
 	"test_image_max_dim":900,
 	"test_flip_images":true,
         "nms_threshold": 0.7,
-        "max_per_image": 5000,
+        "max_per_image": 3000,
         "merge_bbox": false,
         "weight_exp": 8,
 	"cutout":true,
-        "top_k": 3000,
+        "top_k": 2000,
         "backbone": "resnet50"
     }
 }

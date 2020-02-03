@@ -108,15 +108,18 @@ class model(nn.Module):
         #bbox_pred_select = torch.gather(bbox_pred_view, 1, rois_label.view(rois_label.size(0), 1, 1).expand(rois_label.size(0), 1, 4))
         #bbox_pred = bbox_pred_select.squeeze(1)
 
+        
         cls_score = self.RCNN_cls_score(pooled_feat)
+        cls_prob = F.softmax(cls_score, 1)
         #print(cls_score.shape)
         cls_score = cls_score.view(batch_size, nroi, -1)
+        cls_prob = cls_prob.view(batch_size, nroi, -1)
         #print(cls_score.shape)
         for ind in range(len(anchors_inds)):
             anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
             anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
 
-        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score , bbox_pred,bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, self.classes
+        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred,bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, self.classes
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
@@ -129,8 +132,10 @@ class model(nn.Module):
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
         bbox_pred = bbox_pred.view(batch_size, nroi, 4)
         cls_score = self.RCNN_cls_score(pooled_feat)
+        cls_prob = F.softmax(cls_score, 1)
         cls_score = cls_score.view(batch_size, nroi, -1)
-        decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score ,  **kwargs)
+        cls_prob = cls_prob.view(batch_size, nroi, -1)
+        decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score ,cls_prob,  **kwargs)
         return decoded
     
     def forward(self, *xs, **kwargs):
@@ -184,7 +189,7 @@ class MatrixNetAnchorsLoss(nn.Module):
             focal_loss = focal_loss / numf
         
         #classification and prediction loss
-        rois, cls_score, bbox_pred, bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses = outs[3:]
+        rois, cls_score, cls_prob, bbox_pred, bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses = outs[3:]
         RCNN_loss_cls = 0
         RCNN_loss_bbox = 0
         #print(bbox_inside_weights.shape)
@@ -361,19 +366,19 @@ class ProposalGenerator(nn.Module):
 
 
 
-def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score 
-    ,K=2000, kernel=1,layers_range = None,dist_threshold=0.2,
+def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob, 
+   K=2000, kernel=1,layers_range = None,dist_threshold=0.2,
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
         dets = rois.data
         #print(dets.shape, "ddd")
-        batch, rois, classes = cls_score.size()
-        topk_scores, topk_inds = torch.topk(cls_score.data.view(batch, -1), K)
+        batch, rois, classes = cls_prob.size()
+        topk_scores, topk_inds = torch.topk(cls_prob.data.view(batch, -1), K)
         topk_clses = (topk_inds / (classes)).int()
         topk_inds = topk_inds % (classes)
         #print(topk_inds, topk_clses)
         dets = _gather_feat(dets, topk_inds)
-        clses  = cls_score.contiguous().view(batch, -1, 1)
+        clses  = cls_prob.contiguous().view(batch, -1, 1)
         clses  = _gather_feat(clses,topk_inds).float()   
         #print(clses.shape, "fjfjf")
         #print(dets.shape, "sffs")
