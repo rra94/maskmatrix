@@ -345,23 +345,24 @@ def test_MatrixNetAnchors_(db, nnet, result_dir, debug=False, decode_func=kp_dec
         classes    = detections[..., -1]
         classes    = classes[0]
         detections = detections[0]
-
+        #detections[:, 0:4] = detections[:, 0:4] / 8 
         # reject detections with negative scores
-        #keep_inds  = (detections[:, 0] > 0)
-        #detections = detections[keep_inds]
-        #classes    = classes[keep_inds]
-        #print(detections.shape)
+        keep_inds  = (detections[:, 4] > 0)
+        detections = detections[keep_inds]
+        classes    = classes[keep_inds]
+        #:wqprint(detections[:, 0:4], "fsgdsgsgs")
+        #print(classes.shape)
         top_bboxes[image_id] = {}
         for j in range(categories):
             keep_inds = (classes == j) 
-            top_bboxes[image_id][j + 1] = detections[:, 0:7 ].astype(np.float32)
+            top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:7].astype(np.float32)
 
             #if  merge_bbox:
             #    soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
             #else:
             #    soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
             top_bboxes[image_id][j + 1] = top_bboxes[image_id][j + 1][:, 0:5]
-
+        #print(top_bboxes)
         scores = np.hstack([
             top_bboxes[image_id][j][:, -1] 
             for j in range(1, categories + 1)
@@ -369,15 +370,17 @@ def test_MatrixNetAnchors_(db, nnet, result_dir, debug=False, decode_func=kp_dec
         if len(scores) > max_per_image:
             kth    = len(scores) - max_per_image
             thresh = np.partition(scores, kth)[kth]
+            #print(thresh, "dss")
             for j in range(1, categories + 1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] >= thresh)
                 top_bboxes[image_id][j] = top_bboxes[image_id][j][keep_inds]
+        #print(top_bboxes)
         if debug:
             image_file = db.image_file(db_ind)
             image      = cv2.imread(image_file)
             bboxes = {}
             for j in range(categories ,0 , -1):
-                keep_inds = (top_bboxes[image_id][j][:, -1] > 0.1)
+                keep_inds = (top_bboxes[image_id][j][:, -1] > 0.)
                 #print(db.class_name)
                 cat_name  = db.class_name(j)
                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
@@ -385,7 +388,7 @@ def test_MatrixNetAnchors_(db, nnet, result_dir, debug=False, decode_func=kp_dec
                 color     = color * 255
                 color     = color.astype(np.int32).tolist()
                 for bbox in top_bboxes[image_id][j][keep_inds]:
-#                     print(bbox)
+                    #print(bbox)
                     bbox  = bbox[0:4].astype(np.int32)
                     if bbox[1] - cat_size[1] - 2 < 0:
                         cv2.rectangle(image,
@@ -413,22 +416,22 @@ def test_MatrixNetAnchors_(db, nnet, result_dir, debug=False, decode_func=kp_dec
                         color, 2
                     )
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
-            #print(debug_file)
+            print(debug_file)
             cv2.imwrite(debug_file,image)
 
-    #result_json = os.path.join(result_dir, "results.json")
+    result_json = os.path.join(result_dir, "results.json")
     
-    #detections  = db.convert_to_coco(top_bboxes)
+    detections  = db.convert_to_coco(top_bboxes)
 
-    #with open(result_json, "w") as f:
-    #    json.dump(detections, f)
+    with open(result_json, "w") as f:
+        json.dump(detections, f)
     
-    cls_ids   = list(range(1, categories))
+    cls_ids   = list(range(1, categories+1))
     image_ids = [db.image_ids(ind) for ind in db_inds]
     #print(image_ids)
-    detections=db.convert_to_numpy(top_bboxes)
+    #detections=db.convert_to_numpy(top_bboxes)
     #print(detections.shape)
-    db.evaluate_rpn(detections, cls_ids, image_ids)
+    db.evaluate(detections, cls_ids, image_ids)
     return 0
 
 

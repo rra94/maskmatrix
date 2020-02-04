@@ -42,7 +42,7 @@ class _ProposalTargetLayer(nn.Module):
         BATCH_SIZE  = gt_boxes.shape[0] #what batch size is this?
         #print("BATCH_size-----------------", BATCH_SIZE)
         num_images = 1
-        rois_per_image = int(32) #int(BATCH_SIZE / num_images)
+        rois_per_image = int(256) #int(BATCH_SIZE / num_images)
         fg_rois_per_image = int(np.round(0.25 * rois_per_image))
         fg_rois_per_image = 1 if fg_rois_per_image == 0 else fg_rois_per_image
 

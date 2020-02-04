@@ -82,6 +82,7 @@ class model(nn.Module):
         self.proposals_generators = ProposalGenerator(db)
         self.proposal_target_layer = _ProposalTargetLayer(self.classes) #80 or 81
         self.RCNN_roi_align = RoIAlignMatrixNet(POOLING_SIZE, POOLING_SIZE)
+        
         self.RCNN_cls_score = nn.Linear(linearfiltersize, self.classes) # 80 or 81
         self.RCNN_bbox_pred = nn.Linear(linearfiltersize, 4 )
 
@@ -93,6 +94,8 @@ class model(nn.Module):
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
         #print(rois.size(), "----------------proposals")
         rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
+        rois_saved = rois.data
+
         #print(rois_label.size(), "------sampled")
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         #rint(pooled_feat.size())
@@ -110,7 +113,8 @@ class model(nn.Module):
 
         
         cls_score = self.RCNN_cls_score(pooled_feat)
-        cls_prob = F.softmax(cls_score, 1)
+        #cls_prob = F.softmax(cls_score, 1)
+        cls_prob = F.sigmoid(cls_score)
         #print(cls_score.shape)
         cls_score = cls_score.view(batch_size, nroi, -1)
         cls_prob = cls_prob.view(batch_size, nroi, -1)
@@ -132,7 +136,8 @@ class model(nn.Module):
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
         bbox_pred = bbox_pred.view(batch_size, nroi, 4)
         cls_score = self.RCNN_cls_score(pooled_feat)
-        cls_prob = F.softmax(cls_score, 1)
+        #cls_prob = F.softmax(cls_score, 1)
+        cls_prob = F.sigmoid(cls_score)
         cls_score = cls_score.view(batch_size, nroi, -1)
         cls_prob = cls_prob.view(batch_size, nroi, -1)
         decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score ,cls_prob,  **kwargs)
@@ -193,12 +198,14 @@ class MatrixNetAnchorsLoss(nn.Module):
         RCNN_loss_cls = 0
         RCNN_loss_bbox = 0
         #print(bbox_inside_weights.shape)
-        #print(rois_label.flatten().shape)i
+        #print(rois_label.shape, cls_score.shape)
     
         RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label.flatten().long())
+        #RCNN_loss_cls = F.binary_cross_entropy(cls_score, rois_label)
         #RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred,  torch.reshape(bbox_targets, bbox_pred.size()), bbox_inside_weights.view(-1,4), bbox_outside_weights.view(-1,4)) 
 
         loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox + RCNN_loss_cls
+        print(RCNN_loss_cls)
         return loss.unsqueeze(0)
     #change to get bbox loss 
     def _smooth_l1_loss(self,bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
@@ -295,8 +302,8 @@ class ProposalGenerator(nn.Module):
             corners_tl_regr = corners_tl_regrs[i]
             corners_br_regr = corners_br_regrs[i]
             batch, cat, height, width = anchors_heat.size()
-            height_scale = 8*height_0 / height
-            width_scale = 8*width_0 / width
+            height_scale = height_0 / height
+            width_scale = width_0 / width
             #print(height_scale, width_scale)
             K = min(top_k, width * height)
             anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K=K)
@@ -371,20 +378,31 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
         dets = rois.data
-        #print(dets.shape, "ddd")
         batch, rois, classes = cls_prob.size()
-        topk_scores, topk_inds = torch.topk(cls_prob.data.view(batch, -1), K)
-        topk_clses = (topk_inds / (classes)).int()
-        topk_inds = topk_inds % (classes)
+        cls_prob = cls_prob[:,:, 1:classes]
+        #print(dets[:,:,1:5])
+        #print(cls_prob.shape, "ddd")
+        batch, rois, classes = cls_prob.size()
+        #print(cls_prob.data.view(batch, rois, 1 ).size(), "tsffdsfds")
+        topk_scores, topk_inds = torch.topk(cls_prob.data.contiguous().view(batch, -1 ),  K)
+        topk_clses = topk_inds % (classes)
+        topk_inds = (topk_inds / (classes)).long()
+        
+        #topk_clses = topk_inds % (classes)
+        #print(topk_inds.shape,topk_clses.shape, "hdghdh")
+
         #print(topk_inds, topk_clses)
         dets = _gather_feat(dets, topk_inds)
-        clses  = cls_prob.contiguous().view(batch, -1, 1)
-        clses  = _gather_feat(clses,topk_inds).float()   
+        #print(dets.shape)
+        #clses  = cls_prob.contiguous().view(batch, -1, 1)
+        #clses  = _gather_feat(clses,topk_inds).float()   
         #print(clses.shape, "fjfjf")
         #print(dets.shape, "sffs")
-        dets [:,:, 1:5] = dets[:,:,1:5] / 8
-        dets[:,:,5] = torch.squeeze(clses, 2)
+        #dets[:,:,0] = topk_scores
+        #dets [:,:, 1:5] = dets[:,:,1:5] 
+        dets[:,:,5] = topk_clses
         dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,0:1], dets[:,:,5:6]], dim =2)
+        #print(dets_return[:,:, 0:4])
         return dets_return
                 
 def _decode_(
