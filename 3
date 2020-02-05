@@ -133,7 +133,7 @@ class model(nn.Module):
         #rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         #rois[:,:,1:5] = rois[:,:1:5] / 8
-        #print(rois.size(), "fgsgrs")
+        print(rois.size(), "fgsgrs")
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
         bbox_pred = bbox_pred.view(batch_size, nroi, 4)
         cls_score = self.RCNN_cls_score(pooled_feat)
@@ -381,7 +381,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         ):
         dets = rois.data
         batch, rois, classes = cls_prob.size()
-        #print(batch)
+        print(batch)
         cls_prob = cls_prob[:,:, 1:classes]
         #print(dets[:,:,1:5])
         #print(cls_prob.shape, "ddd")
@@ -390,12 +390,12 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         topk_scores, topk_inds = torch.topk(cls_prob.data.contiguous().view(batch, -1 ),  K)
         topk_clses = topk_inds % (classes)
         topk_inds = (topk_inds / (classes)).long()
-        #tester= topk_inds[0][1]
-        #print(dets[0,tester, :])
+        tester= topk_inds[0][1]
+        print(dets[0,tester, :])
         inds = topk_inds.unsqueeze(2).expand(batch, K, dets.size(2))
-        #print(topk_scores, "ghdghrdsgsrgse")
+        #print(inds, "ghdghrdsgsrgse")
         dets = torch.gather(dets, 1, inds)
-        #print(dets[0,1,:])
+        print(dets[0,1,:])
         #tops = torch.cat([topk_inds, topk_clses], dim =1) 
         #topk_clses = topk_inds % (classes)
         #print(topk_inds.shape,topk_clses.shape, "hdghdh")
@@ -408,7 +408,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         #clses  = _gather_feat(clses,topk_inds).float()   
         #print(clses.shape, "fjfjf")
         #print(dets.shape, "sffs")
-        dets[:,:,0] = topk_scores #* dets[:,:,0]
+        dets[:,:,0] = topk_scores* dets[:,:,0]
         #dets [:,:, 1:5] = dets[:,:,1:5] 
         dets[:,:,5] = topk_clses
         dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,0:1], dets[:,:,5:6]], dim =2)

@@ -616,7 +616,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                         color, 2
                     )
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
-            print(debug_file)
+            #print(debug_file)
             cv2.imwrite(debug_file,image)
 
     result_json = os.path.join(result_dir, "results.json")
