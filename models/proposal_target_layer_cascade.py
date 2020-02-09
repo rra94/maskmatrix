@@ -38,6 +38,7 @@ class _ProposalTargetLayer(nn.Module):
         #gt_boxes_append[:,:,1:5] = gt_boxes[:,:,:4]
         #gt_boxes_append(gt_boxes_append)
         # Include ground-truth boxes in the set of candidate roi
+        all_rois[:,:,1:5] = 8 * all_rois[:,:, 1:5]
         all_rois = torch.cat([all_rois, gt_boxes], 1)
         BATCH_SIZE  = gt_boxes.shape[0] #what batch size is this?
         #print("BATCH_size-----------------", BATCH_SIZE)

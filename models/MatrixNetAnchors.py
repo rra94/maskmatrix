@@ -206,7 +206,7 @@ class MatrixNetAnchorsLoss(nn.Module):
         #RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred,  torch.reshape(bbox_targets, bbox_pred.size()), bbox_inside_weights.view(-1,4), bbox_outside_weights.view(-1,4)) 
 
         loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox + RCNN_loss_cls
-        print(RCNN_loss_cls)
+        #print(RCNN_loss_cls, focal_loss,  corner_regr_loss )
         return loss.unsqueeze(0)
     #change to get bbox loss 
     def _smooth_l1_loss(self,bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
@@ -296,7 +296,7 @@ class ProposalGenerator(nn.Module):
         #print(anchors_heats[0].size(), "anchorsize)")
         top_k = self.K 
         batch, cat, height_0, width_0 = anchors_heats[0].size()
-        print(batch, "hdrhdrhrsddr")
+        #print(batch, "hdrhdrhrsddr")
         layer_detections = [None for i in range(len(anchors_heats))]
        # with torch.no_grad(): 
         for i in range(len(anchors_heats)):
@@ -383,11 +383,13 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         batch, rois, classes = cls_prob.size()
         #print(batch)
         cls_prob = cls_prob[:,:, 1:classes]
+        #print ("class_props: ", cls_prob[0,:5, 1:classes]*10000)
         #print(dets[:,:,1:5])
         #print(cls_prob.shape, "ddd")
         batch, rois, classes = cls_prob.size()
         #print(cls_prob.data.view(batch, rois, 1 ).size(), "tsffdsfds")
         topk_scores, topk_inds = torch.topk(cls_prob.data.contiguous().view(batch, -1 ),  K)
+        #print("topk inds: ", topk_inds[0,:100])
         topk_clses = topk_inds % (classes)
         topk_inds = (topk_inds / (classes)).long()
         #tester= topk_inds[0][1]
@@ -409,6 +411,8 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         #print(clses.shape, "fjfjf")
         #print(dets.shape, "sffs")
         dets[:,:,0] = topk_scores #* dets[:,:,0]
+        #print ("Top scores: ",topk_scores[:1,:100])
+        #print( "Top classes: ", topk_clses[:1,:100])
         #dets [:,:, 1:5] = dets[:,:,1:5] 
         dets[:,:,5] = topk_clses
         dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,0:1], dets[:,:,5:6]], dim =2)
