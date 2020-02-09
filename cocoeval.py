@@ -125,7 +125,7 @@ class COCOeval:
         :return: None
         '''
         tic = time.time()
-        print('Running per image evaluation...')
+        print('Running per image evaluation@@RRA...')
         p = self.params
         # add backward compatibility if useSegm is specified in params
         if not p.useSegm is None:
@@ -255,7 +255,7 @@ class COCOeval:
                 g["area"] = max(h,w)/min(h,w)
             else:
                 g["area"] = -1
-            print(g)
+            #print(g)
             if g['ignore'] or (g['area']<aRng[0] or g['area']>aRng[1]):
                 g['_ignore'] = 1
             else:
@@ -280,6 +280,11 @@ class COCOeval:
         if not len(ious)==0:
             for tind, t in enumerate(p.iouThrs):
                 for dind, d in enumerate(dt):
+                    h,w = d['bbox'][2:4]
+                    if min(h,w) > 0:
+                        d["area"] = max(h,w)/min(h,w)
+                    else:
+                        d["area"] = -1
                     # information about best match so far (m=-1 -> unmatched)
                     iou = min([t,1-1e-10])
                     m   = -1
@@ -514,7 +519,7 @@ class Params:
         self.iouThrs = np.linspace(.5, 0.95, np.round((0.95 - .5) / .05) + 1, endpoint=True)
         self.recThrs = np.linspace(.0, 1.00, np.round((1.00 - .0) / .01) + 1, endpoint=True)
         self.maxDets = [1, 10, 100]
-        self.areaRng = [[0, 1e10], [0,1.75], [1.75, 3], [3, 1e10]]
+        self.areaRng = [[0, 1e10], [0,1.5], [1.5, 2.5], [2.5, 1e10]]
         #self.areaRng = [[0 ** 2, 1e5 ** 2], [0 ** 2, 32 ** 2], [32 ** 2, 96 ** 2], [96 ** 2, 1e5 ** 2]]
         self.areaRngLbl = ['all', 'small', 'medium', 'large']
         self.useCats = 1
