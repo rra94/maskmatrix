@@ -18,7 +18,7 @@
 
         "max_iter": 150000,
         "stepsize": 130000,
-        "snapshot": 5000,
+        "snapshot": 500,
 
         "chunk_sizes": [1,1],
 	"cache_dir" : "./MatrixNetAnchorsResnet50_FPN_48LayerRange_640isize",

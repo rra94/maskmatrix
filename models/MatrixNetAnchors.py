@@ -256,7 +256,9 @@ class RoIAlignMatrixNet(nn.Module):
             #print(pooled_inds.size(),pooled_feats.size() )
             #pooled_inds = pooled_inds.squeeze().expand(pooled_feats.size())
             #print(pooled_inds.size(),pooled_feats.size() )
-            pooled_feats_2 = pooled_feats[pooled_inds.squeeze(),:,:,:]
+            pooled_feats_2 = pooled_feats.clone()
+            pooled_feats_2[pooled_inds.squeeze(), :,:,:] = pooled_feats[:,:,:,:]
+            #pooled_feats_2 = pooled_feats[pooled_inds.squeeze(),:,:,:]
             pooled_feats_2 = torch.unsqueeze(pooled_feats_2, dim = 0)
             batch_pooled_feats.append(pooled_feats_2)
         #print(batch_pooled_feats[0].size())
