@@ -96,7 +96,7 @@ class model(nn.Module):
         #print(rois[0][1:4][:])
         #print(rois.size(), "----------------proposals")
         rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
-        rois_saved = rois.data
+       
         #print('after: ', rois[0][1:4][:],rois[0][1:4][:],  rois_label[0][1:4])
         #print(rois_label.size(), "------sampled")
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
@@ -248,16 +248,19 @@ class RoIAlignMatrixNet(nn.Module):
         #print(rois.size(), "roi")
         for b in range(batch_size):
             pooled_feats = []
+            pooled_inds = []
             #print(rois)
             for i in range(len(features)):
                 #print(features[i].shape, rois[b].shape)
                 #print(rois[b][:,6])
                 keep_inds = (rois[b][:,6] == i)
+                
                 #:w
                 #print(keep_inds.device)
                 #Print(keep_inds)
                 if (torch.sum(keep_inds) == 0):
                     continue
+                inds = keep_inds.nonzero() 
                 roi = rois[b][keep_inds]
                 #print(roi.shape)
                 rois_cords = self.resize_rois(roi[:,1:5], features[i],height_0, width_0)
@@ -266,10 +269,15 @@ class RoIAlignMatrixNet(nn.Module):
                 x =  roi_align(features[i][b:b+1], [rois_cords], output_size=(self.aligned_width, self.aligned_height))
                 x = F.avg_pool2d(x, kernel_size=2, stride=1)
                 pooled_feats.append(x)
+                pooled_inds.append(inds)
                 #print(x.size())
                 #print(pooled_feats[0].size())
             pooled_feats = torch.cat(pooled_feats, dim =0)
-            #print(pooled_feats.size())
+            pooled_inds = torch.cat(pooled_inds, dim =0)
+            #print(pooled_inds.size(),pooled_feats.size() )
+            #pooled_inds = pooled_inds.squeeze().expand(pooled_feats.size())
+            #print(pooled_inds.size(),pooled_feats.size() )
+            pooled_feats[:,:,:,:] = pooled_feats[pooled_inds.squeeze(),:,:,:].clone().detach()
             pooled_feats = torch.unsqueeze(pooled_feats, dim = 0)
             batch_pooled_feats.append(pooled_feats)
         #print(batch_pooled_feats[0].size())
