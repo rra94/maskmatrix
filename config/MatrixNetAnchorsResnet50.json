@@ -55,7 +55,7 @@
         "categories":80,
 	"test_image_max_dim":900,
 	"test_flip_images":true,
-        "nms_threshold": 0.7,
+        "nms_threshold": 0.9,
         "max_per_image": 2000,
         "merge_bbox": false,
         "weight_exp": 8,

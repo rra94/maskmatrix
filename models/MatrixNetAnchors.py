@@ -92,10 +92,12 @@ class model(nn.Module):
         anchors_inds = xs[1]
         features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.rpn.forward(image)
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
+
+        #print(rois[0][1:4][:])
         #print(rois.size(), "----------------proposals")
         rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
         rois_saved = rois.data
-
+        print('after: ', rois[0][1:4][:],rois[0][1:4][:],  rois_label[0][1:4])
         #print(rois_label.size(), "------sampled")
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         #rint(pooled_feat.size())
@@ -200,11 +202,15 @@ class MatrixNetAnchorsLoss(nn.Module):
         RCNN_loss_bbox = 0
         #print(bbox_inside_weights.shape)
         #print(rois_label.shape, cls_score.shape)
-    
-        RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label.flatten().long())
+        
+        #RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label.flatten().long())
+        y_onehot = torch.FloatTensor(rois_label.shape[0] * rois_label.shape[1], nclasses).cuda()
+        y_onehot.zero_()
+        y_onehot.scatter_(1, rois_label.view(-1, 1).long(), 1)
+        RCNN_loss_cls = F.binary_cross_entropy(cls_prob.view(-1, nclasses), y_onehot)
         #RCNN_loss_cls = F.binary_cross_entropy(cls_score, rois_label)
         #RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred,  torch.reshape(bbox_targets, bbox_pred.size()), bbox_inside_weights.view(-1,4), bbox_outside_weights.view(-1,4)) 
-
+        #print("cls loss: {}".format(RCNN_loss_cls.item()))
         loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox + RCNN_loss_cls
         #print(RCNN_loss_cls, focal_loss,  corner_regr_loss )
         return loss.unsqueeze(0)
