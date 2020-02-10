@@ -92,35 +92,14 @@ class model(nn.Module):
         anchors_inds = xs[1]
         features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.rpn.forward(image)
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
-
-        #print(rois[0][1:4][:])
-        #print(rois.size(), "----------------proposals")
         rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
-       
-        #print('after: ', rois[0][1:4][:],rois[0][1:4][:],  rois_label[0][1:4])
-        #print(rois_label.size(), "------sampled")
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
-        #rint(pooled_feat.size())
-
-        #pooled_feats = pooled_feats.view(batch_size, nroi/batch_size, ch, w, h)
-        #print(pooled_feat.shape, "---------------pooledshapew")
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
-        #print(bbox_pred.shape)
-        bbox_pred = bbox_pred.view(batch_size, nroi, 4)
-
-        #bbox_pred_view = bbox_pred.view(bbox_pred.size(0), int(bbox_pred.size(1) / 4), 4)
-        #print(rois_label.view(rois_label.size(0), 1, 1).expand(rois_label.size(0), 1, 4), "bbboc")
-        #bbox_pred_select = torch.gather(bbox_pred_view, 1, rois_label.view(rois_label.size(0), 1, 1).expand(rois_label.size(0), 1, 4))
-        #bbox_pred = bbox_pred_select.squeeze(1)
-
-        
+        bbox_pred = bbox_pred.view(batch_size, nroi, 4)        
         cls_score = self.RCNN_cls_score(pooled_feat)
-        #cls_prob = F.softmax(cls_score, 1)
         cls_prob = F.sigmoid(cls_score)
-        #print(cls_score.shape)
         cls_score = cls_score.view(batch_size, nroi, -1)
         cls_prob = cls_prob.view(batch_size, nroi, -1)
-        #print(cls_score.shape)
         for ind in range(len(anchors_inds)):
             anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
             anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
