@@ -97,7 +97,7 @@ class model(nn.Module):
         #print(rois.size(), "----------------proposals")
         rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
         rois_saved = rois.data
-        print('after: ', rois[0][1:4][:],rois[0][1:4][:],  rois_label[0][1:4])
+        #print('after: ', rois[0][1:4][:],rois[0][1:4][:],  rois_label[0][1:4])
         #print(rois_label.size(), "------sampled")
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         #rint(pooled_feat.size())
@@ -132,9 +132,11 @@ class model(nn.Module):
         #gt_rois = xs[2][0]
         features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.rpn.forward(image)
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
+        #print(rois.shape)
+        rois[:,:,1:5] = rois[:,:,1:5] * 8
         #rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
-        #rois[:,:,1:5] = rois[:,:1:5] / 8
+        
         #print(rois.size(), "fgsgrs")
         bbox_pred = self.RCNN_bbox_pred(pooled_feat)
         bbox_pred = bbox_pred.view(batch_size, nroi, 4)
@@ -211,8 +213,8 @@ class MatrixNetAnchorsLoss(nn.Module):
         #RCNN_loss_cls = F.binary_cross_entropy(cls_score, rois_label)
         #RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred,  torch.reshape(bbox_targets, bbox_pred.size()), bbox_inside_weights.view(-1,4), bbox_outside_weights.view(-1,4)) 
         #print("cls loss: {}".format(RCNN_loss_cls.item()))
-        loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox + RCNN_loss_cls
-        #print(RCNN_loss_cls, focal_loss,  corner_regr_loss )
+        loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox +  RCNN_loss_cls
+        #(RCNN_loss_cls, focal_loss,  corner_regr_loss )
         return loss.unsqueeze(0)
     #change to get bbox loss 
     def _smooth_l1_loss(self,bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
@@ -259,8 +261,9 @@ class RoIAlignMatrixNet(nn.Module):
                 roi = rois[b][keep_inds]
                 #print(roi.shape)
                 rois_cords = self.resize_rois(roi[:,1:5], features[i],height_0, width_0)
+                #print (features[i].shape)
                 #print(rois_cords.shape) caused illegal memory error. converting to list seems to work -1/30
-                x =  roi_align(features[i], [rois_cords], output_size=(self.aligned_width, self.aligned_height))
+                x =  roi_align(features[i][b:b+1], [rois_cords], output_size=(self.aligned_width, self.aligned_height))
                 x = F.avg_pool2d(x, kernel_size=2, stride=1)
                 pooled_feats.append(x)
                 #print(x.size())
@@ -386,23 +389,32 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
         dets = rois.data
+        dets[:,:,1:5] = dets[:,:,1:5]/8 
         batch, rois, classes = cls_prob.size()
         #print(batch)
-        cls_prob = cls_prob[:,:, 1:classes]
+        cls_prob = cls_prob[:,:, 1:]
         #print ("class_props: ", cls_prob[0,:5, 1:classes]*10000)
         #print(dets[:,:,1:5])
         #print(cls_prob.shape, "ddd")
         batch, rois, classes = cls_prob.size()
         #print(cls_prob.data.view(batch, rois, 1 ).size(), "tsffdsfds")
         topk_scores, topk_inds = torch.topk(cls_prob.data.contiguous().view(batch, -1 ),  K)
+        print(topk_scores)
         #print("topk inds: ", topk_inds[0,:100])
         topk_clses = topk_inds % (classes)
+        print(topk_clses[0,:100])
         topk_inds = (topk_inds / (classes)).long()
         #tester= topk_inds[0][1]
         #print(dets[0,tester, :])
         inds = topk_inds.unsqueeze(2).expand(batch, K, dets.size(2))
+        #print(topk_scores[0,0])
+        #print(cls_prob[0,topk_inds[0,0],topk_clses[0,0]])
+        #print(dets[0,topk_inds[0,0],:])
+        
         #print(topk_scores, "ghdghrdsgsrgse")
         dets = torch.gather(dets, 1, inds)
+        #print(dets[0,0,:])
+        #print('---')
         #print(dets[0,1,:])
         #tops = torch.cat([topk_inds, topk_clses], dim =1) 
         #topk_clses = topk_inds % (classes)
@@ -416,7 +428,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         #clses  = _gather_feat(clses,topk_inds).float()   
         #print(clses.shape, "fjfjf")
         #print(dets.shape, "sffs")
-        dets[:,:,0] = topk_scores #* dets[:,:,0]
+        dets[:,:,0] =  topk_scores[:,:] #* dets[:,:,0]
         #print ("Top scores: ",topk_scores[:1,:100])
         #print( "Top classes: ", topk_clses[:1,:100])
         #dets [:,:, 1:5] = dets[:,:,1:5] 

@@ -1,0 +1,148 @@
+Sun Feb  9 22:56:10 EST 2020
+cpu004
+/h/arashwan/maskmatrix
+/var/spool/slurmd/job379762/slurm_script: line 14: jupyter.env: No such file or directory
+[I 22:56:13.055 NotebookApp] Serving notebooks from local directory: /scratch/ssd001/home/arashwan/maskmatrix
+[I 22:56:13.055 NotebookApp] The Jupyter Notebook is running at:
+[I 22:56:13.055 NotebookApp] http://(cpu004 or 127.0.0.1):8888/?token=6a9e8615c01d8849ee064e57565f98fcc3dfb84bd1cd75f0
+[I 22:56:13.055 NotebookApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[W 22:56:13.062 NotebookApp] No web browser found: could not locate runnable browser.
+[C 22:56:13.062 NotebookApp] 
+    
+    To access the notebook, open this file in a browser:
+        file:///scratch/ssd001/home/arashwan/.local/share/jupyter/runtime/nbserver-53488-open.html
+    Or copy and paste one of these URLs:
+        http://(cpu004 or 127.0.0.1):8888/?token=6a9e8615c01d8849ee064e57565f98fcc3dfb84bd1cd75f0
+[I 22:58:19.269 NotebookApp] 302 GET /?token=6a9e8615c01d8849ee064e57565f98fcc3dfb84bd1cd75f0 (172.17.15.250) 0.53ms
+[W 22:58:21.181 NotebookApp] 404 GET /apple-touch-icon-precomposed.png (172.17.15.250) 8.25ms referer=None
+[W 22:58:21.250 NotebookApp] 404 GET /apple-touch-icon.png (172.17.15.250) 1.15ms referer=None
+[I 23:01:13.640 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:01:14.797 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:02:14.057 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:02:30.662 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:04:43.600 NotebookApp] Saving file at /test/coco.py
+[I 23:07:36.703 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:10:33.947 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:11:23.083 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:11:55.985 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:12:02.359 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:13:13.694 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:14:16.721 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:14:46.351 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:17:23.978 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:18:43.775 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:18:59.903 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:19:01.612 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:20:24.041 NotebookApp] Saving file at /test/coco.py
+[I 23:25:31.517 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:26:58.899 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:29:54.684 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:31:14.409 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:34:57.603 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:37:13.380 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:41:12.937 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:41:24.089 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 23:50:15.611 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 00:05:11.721 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 00:10:45.944 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[W 01:05:32.639 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:32.640 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.86ms referer=None
+[W 01:05:33.339 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:33.339 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.40ms referer=None
+[W 01:05:47.297 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:47.298 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.66ms referer=None
+[W 01:05:52.818 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:52.819 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.70ms referer=None
+[W 01:05:53.655 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:53.656 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.42ms referer=None
+[W 01:05:54.743 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:54.744 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.42ms referer=None
+[W 01:05:55.616 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:55.617 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.40ms referer=None
+[W 01:05:56.317 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:56.317 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.39ms referer=None
+[W 01:05:58.470 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:58.471 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.57ms referer=None
+[W 01:05:59.731 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/0.jpg
+[W 01:05:59.732 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/0.jpg (172.17.15.250) 1.60ms referer=None
+[W 01:06:02.671 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/1.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/1.jpg
+[W 01:06:02.672 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/1.jpg (172.17.15.250) 1.42ms referer=None
+[W 01:06:07.031 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/1.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/1.jpg
+[W 01:06:07.032 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/1.jpg (172.17.15.250) 1.43ms referer=None
+[W 01:06:09.583 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/2.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/2.jpg
+[W 01:06:09.584 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/2.jpg (172.17.15.250) 1.42ms referer=None
+[W 01:06:16.641 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/27.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/27.jpg
+[W 01:06:16.642 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/27.jpg (172.17.15.250) 1.42ms referer=None
+[W 01:06:20.325 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/27.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/27.jpg
+[W 01:06:20.326 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/27.jpg (172.17.15.250) 1.43ms referer=None
+[W 01:06:24.410 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/27.jpg (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug/27.jpg
+[W 01:06:24.416 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug/27.jpg (172.17.15.250) 9.33ms referer=None
+[I 01:06:24.703 NotebookApp] 302 GET /view/results/MatrixNetAnchors/15000/validation/debug/ (172.17.15.250) 0.35ms
+[W 01:06:24.742 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug (172.17.15.250): File does not exist: results/MatrixNetAnchors/15000/validation/debug
+[W 01:06:24.743 NotebookApp] 404 GET /view/results/MatrixNetAnchors/15000/validation/debug (172.17.15.250) 1.36ms referer=None
+[I 01:07:38.762 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:16:53.541 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:17:02.552 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:21:56.596 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:22:20.014 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:25:36.187 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:27:58.065 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:29:02.619 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:30:21.301 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:32:45.903 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:33:53.676 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:34:59.815 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:37:57.570 NotebookApp] 302 GET / (172.17.15.250) 0.38ms
+[I 01:41:10.798 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:42:06.780 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:43:51.530 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:44:12.722 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:45:36.777 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:48:54.999 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:48:55.998 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:50:38.595 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:50:56.150 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:51:28.438 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:51:40.704 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:53:19.004 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:53:22.276 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:58:53.850 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:59:03.913 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 01:59:36.358 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:00:12.468 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:01:42.387 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:01:42.644 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:01:43.218 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:01:43.540 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:01:43.770 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:08:15.325 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:09:00.245 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:09:18.075 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:10:29.426 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:11:06.912 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:12:02.464 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:14:07.107 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:15:15.877 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:18:09.669 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 02:41:30.959 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 09:39:36.888 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 09:41:38.106 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 09:42:22.853 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 09:43:47.931 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 09:43:51.278 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 09:49:32.283 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:05:02.275 NotebookApp] Saving file at /test/coco.py
+[I 10:07:33.064 NotebookApp] Saving file at /test/coco.py
+[I 10:10:16.227 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:10:29.347 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:11:07.607 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:12:13.039 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:12:26.377 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:13:21.399 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:13:23.034 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:13:23.273 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:13:51.125 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:13:51.998 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:17:26.886 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:23:45.939 NotebookApp] Saving file at /models/MatrixNetAnchors.py
+[I 10:25:35.014 NotebookApp] Saving file at /models/MatrixNetAnchors.py
