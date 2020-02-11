@@ -33,7 +33,7 @@ def bbox_transform(ex_rois, gt_rois):
 
     return targets
 
-def bbox_transform_batch(ex_rois, gt_rois):
+def bbox_transform_batch_old(ex_rois, gt_rois):
 
     if ex_rois.dim() == 2:
         ex_widths = ex_rois[:, 2] - ex_rois[:, 0] + 1.0
@@ -73,6 +73,18 @@ def bbox_transform_batch(ex_rois, gt_rois):
         (targets_dx, targets_dy, targets_dw, targets_dh),2)
 
     return targets
+
+def bbox_transform_batch(ex_rois, gt_rois, ratios):
+    
+    diff = torch.abs(ex_rois[:,:,1:5] - gt_rois[:,:,1:5])
+    
+    #ratios = 
+#     diff[:,:,0] = diff[:,:,0]/ratios[:, :,0]
+#     diff[:,:,2] = diff[:,:,2]/ratios[:, :,0]
+#     diff[:,:,1] = diff[:,:,1]/ratios[:, :,1]
+#     diff[:,:,3] = diff[:,:,3]/ratios[:, :,1]
+    
+    return diff
 
 def bbox_transform_inv(boxes, deltas, batch_size):
     widths = boxes[:, :, 2] - boxes[:, :, 0] + 1.0
