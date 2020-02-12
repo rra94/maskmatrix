@@ -76,15 +76,23 @@ def bbox_transform_batch_old(ex_rois, gt_rois):
 
 def bbox_transform_batch(ex_rois, gt_rois, ratios):
     
-    diff = torch.abs(ex_rois[:,:,1:5] - gt_rois[:,:,1:5])
-    
-    #ratios = 
-#     diff[:,:,0] = diff[:,:,0]/ratios[:, :,0]
-#     diff[:,:,2] = diff[:,:,2]/ratios[:, :,0]
-#     diff[:,:,1] = diff[:,:,1]/ratios[:, :,1]
-#     diff[:,:,3] = diff[:,:,3]/ratios[:, :,1]
-    
-    return diff
+    diff = ex_rois[:,:,1:5] - gt_rois[:,:,1:5]
+    layers = ex_rois[:,:,6].long()
+    batches, nrois, _ = ex_rois.shape
+#     print(ratios)
+    layers_h = layers.new(batches, nrois, 3).zero_().float()
+#     print(layers.shape)
+#     print(layers_h.shape)
+    for b in range(batches):
+        layers_h[b] = torch.index_select( ratios[b], 0, layers[b])
+#     print("---------",ex_rois[0, 1:4, :])
+#     print("--------------",layers_h[0, 1:4, :])
+#     print("--------------",layers_h.shape)
+    targets_tl = torch.cat([diff[:,:,0:1] * layers_h[:,:,1:2] , diff[:,:,1:2] * layers_h[:,:,2:3] ] ,dim=2)
+    targets_br = torch.cat([diff[:,:,2:3] * layers_h[:,:,1:2],  diff[:,:,3:4] * layers_h[:,:,2:3] ] ,dim=2)
+#     print("------",targets_tl[0, 1:4, :])
+#     print("---------",targets_br[0, 1:4, :])
+    return targets_tl, targets_br 
 
 def bbox_transform_inv(boxes, deltas, batch_size):
     widths = boxes[:, :, 2] - boxes[:, :, 0] + 1.0
