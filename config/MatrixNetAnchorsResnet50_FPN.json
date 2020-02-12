@@ -18,7 +18,7 @@
 
         "max_iter": 150000,
         "stepsize": 130000,
-        "snapshot": 5000,
+        "snapshot": 500,
 
         "chunk_sizes": [3,4],
 	"cache_dir" : "./MatrixNetAnchorsResnet50_FPN_48LayerRange_640isize",
@@ -31,8 +31,8 @@
         "rand_scale_step": 0.1,
         "rand_scales": null,
 	"num_dets":2000,
-        "rand_crop": true,
-        "rand_color": true,
+        "rand_crop": false,
+        "rand_color": false,
 
         "border": 128,
         "gaussian_bump": true,

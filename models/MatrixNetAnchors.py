@@ -89,7 +89,12 @@ class model(nn.Module):
         self.RCNN_cls_score = nn.Sequential(nn.Linear(linearfiltersize, 1024),
                                              nn.ReLU(),
                                              nn.Linear(1024, self.classes)) # 80 or 81
-        self.RCNN_bbox_pred = nn.Linear(linearfiltersize, 4 )
+        self.RCNN_bbox_pred_tl = nn.Sequential(nn.Linear(linearfiltersize, 1024),
+                                             nn.ReLU(),
+                                             nn.Linear(1024, 2))
+        self.RCNN_bbox_pred_br = nn.Sequential(nn.Linear(linearfiltersize, 1024),
+                                             nn.ReLU(),
+                                             nn.Linear(1024, 2))
 
     def _train(self, *xs):
         image = xs[0][0]
@@ -98,7 +103,7 @@ class model(nn.Module):
         ratios = xs[3][0]
         features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.rpn.forward(image)
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
-        rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois, ratios)
+        rois, rois_label, bbox_targets_tl, bbox_targets_br , bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois, ratios)
         
         
 #         fimage = image[0] * 255
@@ -145,13 +150,17 @@ class model(nn.Module):
         _, inds = torch.topk(rois[:,:, 6], rois.size(1))
         rois = _gather_feat(rois, inds)
         rois_label =  rois_label.gather(1, inds)
-        bbox_targets = _gather_feat(bbox_targets, inds)
+        bbox_targets_tl = _gather_feat(bbox_targets_tl, inds)
+        bbox_targets_br = _gather_feat(bbox_targets_br, inds)
         bbox_inside_weights = _gather_feat(bbox_inside_weights, inds)
         bbox_outside_weights = _gather_feat(bbox_outside_weights, inds)
         
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
-        bbox_pred = self.RCNN_bbox_pred(pooled_feat)
-        bbox_pred = bbox_pred.view(batch_size, nroi, 4)
+        bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
+        bbox_pred_tl = bbox_pred_tl.view(batch_size, nroi, 2)
+        
+        bbox_pred_br = self.RCNN_bbox_pred_br(pooled_feat)
+        bbox_pred_br = bbox_pred_br.view(batch_size, nroi, 2)
         
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, dim = 1)
@@ -162,7 +171,7 @@ class model(nn.Module):
             anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
             anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
 
-        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred,bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, self.classes
+        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, self.classes
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
@@ -177,13 +186,17 @@ class model(nn.Module):
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
 
         
-        bbox_pred = self.RCNN_bbox_pred(pooled_feat)
-        bbox_pred = bbox_pred.view(batch_size, nroi, 4)
+        bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
+        bbox_pred_tl = bbox_pred_tl.view(batch_size, nroi, 2)
+        
+        bbox_pred_br = self.RCNN_bbox_pred_br(pooled_feat)
+        bbox_pred_br = bbox_pred_br.view(batch_size, nroi, 2)
+        
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, dim = 1)
         cls_score = cls_score.view(batch_size, nroi, -1)
         cls_prob = cls_prob.view(batch_size, nroi, -1)
-        decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred, cls_score ,cls_prob,  **kwargs)
+        decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
         return decoded
     
     def forward(self, *xs, **kwargs):
@@ -235,17 +248,20 @@ class MatrixNetAnchorsLoss(nn.Module):
             focal_loss = focal_loss / numf
         
         #classification and prediction loss
-        rois, cls_score, cls_prob, bbox_pred, bbox_targets, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses = outs[3:]
+        rois, cls_score, cls_prob, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses = outs[3:]
         RCNN_loss_cls = 0
-        RCNN_loss_bbox = 0
+        RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights)
+        print(RCNN_loss_bbox)
         RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label.flatten().long())
         loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox +  RCNN_loss_cls
         return loss.unsqueeze(0)
     
-    def _smooth_l1_loss(self, rois, bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
+    def _smooth_l1_loss(self, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
         sigma_2 = sigma ** 2
-        box_diff = bbox_pred - bbox_targets
-        in_box_diff = bbox_inside_weights * box_diff
+        box_diff_tl = bbox_pred_tl - bbox_targets_tl
+        box_diff_br =  bbox_pred_br - bbox_targets_br
+        in_box_diff = bbox_inside_weights * torch.cat([box_diff_tl, box_diff_br], dim = 2)
+        #print(in_box_diff.shape)
         abs_in_box_diff = torch.abs(in_box_diff)
         smoothL1_sign = (abs_in_box_diff < 1. / sigma_2).detach().float()
         in_loss_box = torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)
@@ -360,14 +376,36 @@ class ProposalGenerator(nn.Module):
         pass
 
 
-def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred, cls_score, cls_prob, 
+def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score, cls_prob, 
    K=2000, kernel=1,layers_range = None,dist_threshold=0.2,
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
-        dets = rois.data
+        dets = rois.clone().detach()
         dets[:,:,1:5] = dets[:,:,1:5]/8 
-#         dets = bbox_pred.data
-#         dets = dets/8
+        ratios =[]
+        k=0
+        for i,l in enumerate(layers_range):
+            for j,e in enumerate(l):
+                if e !=-1:
+                    ratios.append( [k,1/(2**(j)), 1/(2**(i))])
+                    k+=1
+        
+        ratios= torch.from_numpy(np.array(ratios)).type_as(dets)
+        layers = dets[:,:,6].clone().detach().long()
+        batches, nrois, _ = dets.shape
+        layers_h = layers.new(batches, nrois, 3).zero_().float()
+        for b in range(batches):
+            layers_h[b] = torch.index_select(ratios, 0, layers[b].view(-1))
+
+        targets_tl = torch.cat([bbox_pred_tl[:,:,0:1] / layers_h[:,:,1:2] , bbox_pred_tl[:,:,1:2] / layers_h[:,:,2:3] ] ,dim=2)
+        targets_br = torch.cat([bbox_pred_br[:,:,0:1] / layers_h[:,:,1:2],  bbox_pred_br[:,:,1:2] / layers_h[:,:,2:3] ] ,dim=2)
+        
+        dets[:,:,1:2] =  dets[:,:,1:2] + targets_tl[:,:,0:1]
+        dets[:,:,2:3] =  dets[:,:,2:3] + targets_tl[:,:,1:2]
+        dets[:,:,3:4] =  dets[:,:,3:4] + targets_br[:,:,0:1]
+        dets[:,:,4:5] =  dets[:,:,4:5] + targets_br[:,:,1:2]
+        
+        
         batch, rois, classes = cls_prob.size()
         cls_prob = cls_prob[:,:, 1:]
         batch, rois, classes = cls_prob.size()
