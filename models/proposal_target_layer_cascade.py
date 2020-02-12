@@ -29,6 +29,9 @@ class _ProposalTargetLayer(nn.Module):
         #self.BBOX_NORMALIZE_MEANS = torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
         #self.BBOX_NORMALIZE_STDS = torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_STDS)
         #self.BBOX_INSIDE_WEIGHTS = torch.FloatTensor(cfg.TRAIN.BBOX_INSIDE_WEIGHTS)
+        self.FG_THRESH = 0.7
+        self.BG_THRESH_HI = 0.3
+        self.BG_THRESH_LO = 0.0
         self.BBOX_INSIDE_WEIGHTS = torch.FloatTensor([1,1,1,1])
     def forward(self, all_rois, gt_boxes, ratios):
         #gt_boxes_append = gt_boxes.new(gt_boxes.size()).zero_()
@@ -124,9 +127,7 @@ class _ProposalTargetLayer(nn.Module):
         examples.
         """
         # overlaps: (rois x gt_boxes)
-        FG_THRESH = 0.5
-        BG_THRESH_HI = 0.5
-        BG_THRESH_LO = 0.0
+        
         #print(all_rois)
         overlaps = bbox_overlaps_batch(all_rois, gt_boxes)
         #print(torch.sum(overlaps==-1))
@@ -149,13 +150,13 @@ class _ProposalTargetLayer(nn.Module):
         # Guard against the case when an image has fewer than max_fg_rois_per_image
         # foreground RoIs
         for i in range(batch_size):
-            fg_inds = torch.nonzero(max_overlaps[i] >= FG_THRESH).view(-1)
+            fg_inds = torch.nonzero(max_overlaps[i] >= self.FG_THRESH).view(-1)
             #print(fg_inds.size())
             fg_num_rois = fg_inds.numel()
 
             # Select background RoIs as those within [BG_THRESH_LO, BG_THRESH_HI)
-            bg_inds = torch.nonzero((max_overlaps[i] < BG_THRESH_HI) &
-                                    (max_overlaps[i] >=BG_THRESH_LO)).view(-1)
+            bg_inds = torch.nonzero((max_overlaps[i] < self.BG_THRESH_HI) &
+                                    (max_overlaps[i] >= self.BG_THRESH_LO)).view(-1)
             #print(bg_inds.size())
             bg_num_rois = bg_inds.numel()
 

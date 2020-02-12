@@ -89,8 +89,12 @@ class model(nn.Module):
         self.RCNN_cls_score = nn.Sequential(nn.Linear(linearfiltersize, 1024),
                                              nn.ReLU(),
                                              nn.Linear(1024, self.classes)) # 80 or 81
-        self.RCNN_bbox_pred_tl = nn.Linear(linearfiltersize, 2 )
-        self.RCNN_bbox_pred_br = nn.Linear(linearfiltersize, 2 )
+        self.RCNN_bbox_pred_tl = nn.Sequential(nn.Linear(linearfiltersize, 1024),
+                                             nn.ReLU(),
+                                             nn.Linear(1024, 2))
+        self.RCNN_bbox_pred_br = nn.Sequential(nn.Linear(linearfiltersize, 1024),
+                                             nn.ReLU(),
+                                             nn.Linear(1024, 2))
 
     def _train(self, *xs):
         image = xs[0][0]
@@ -383,7 +387,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         for i,l in enumerate(layers_range):
             for j,e in enumerate(l):
                 if e !=-1:
-                    ratios.append( [k,1/(8*2**(j)), 1/(8*2**(i))])
+                    ratios.append( [k,1/(2**(j)), 1/(2**(i))])
                     k+=1
         
         ratios= torch.from_numpy(np.array(ratios)).type_as(dets)
