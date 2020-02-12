@@ -86,15 +86,16 @@ class model(nn.Module):
         self.proposal_target_layer = _ProposalTargetLayer(self.classes) #80 or 81
         self.RCNN_roi_align = RoIAlignMatrixNet(POOLING_SIZE, POOLING_SIZE)
         
-        self.RCNN_cls_score = nn.Sequential(nn.Linear(linearfiltersize, 1024),
+        self.RCNN_head = nn.Sequential(nn.Linear(linearfiltersize, 1024),
                                              nn.ReLU(),
-                                             nn.Linear(1024, self.classes)) # 80 or 81
-        self.RCNN_bbox_pred_tl = nn.Sequential(nn.Linear(linearfiltersize, 1024),
-                                             nn.ReLU(),
-                                             nn.Linear(1024, 2))
-        self.RCNN_bbox_pred_br = nn.Sequential(nn.Linear(linearfiltersize, 1024),
-                                             nn.ReLU(),
-                                             nn.Linear(1024, 2))
+                                             nn.Linear(1024, 1024),
+                                             nn.ReLU())
+        self.RCNN_cls_score = nn.Sequential(nn.Linear(1024, 1024),
+                                             nn.ReLU(),nn.Linear(1024, self.classes)) # 80 or 81
+        self.RCNN_bbox_pred_tl = nn.Sequential(nn.Linear(1024, 1024),
+                                             nn.ReLU(),nn.Linear(1024, 2))
+        self.RCNN_bbox_pred_br = nn.Sequential(nn.Linear(1024, 1024),
+                                             nn.ReLU(),nn.Linear(1024, 2))
 
     def _train(self, *xs):
         image = xs[0][0]
@@ -156,6 +157,7 @@ class model(nn.Module):
         bbox_outside_weights = _gather_feat(bbox_outside_weights, inds)
         
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
+        pooled_feat = self.RCNN_head(pooled_feat)
         bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
         bbox_pred_tl = bbox_pred_tl.view(batch_size, nroi, 2)
         
@@ -185,7 +187,7 @@ class model(nn.Module):
         #rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
         pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
 
-        
+        pooled_feat = self.RCNN_head(pooled_feat)
         bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
         bbox_pred_tl = bbox_pred_tl.view(batch_size, nroi, 2)
         
@@ -251,7 +253,7 @@ class MatrixNetAnchorsLoss(nn.Module):
         rois, cls_score, cls_prob, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses = outs[3:]
         RCNN_loss_cls = 0
         RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights)
-        print(RCNN_loss_bbox)
+        #print(RCNN_loss_bbox)
         RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label.flatten().long())
         loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox +  RCNN_loss_cls
         return loss.unsqueeze(0)
