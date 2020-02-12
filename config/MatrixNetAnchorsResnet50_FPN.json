@@ -53,7 +53,7 @@
         "test_scales": [1],
 	
         "categories":81,
-	"test_image_max_dim":900,
+	"test_image_max_dim":640,
 	"test_flip_images":false,
         "nms_threshold": 0.5,
         "max_per_image": 500,
