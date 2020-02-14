@@ -269,6 +269,7 @@ class MatrixNetAnchorsLoss(nn.Module):
         in_loss_box = torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)
         out_loss_box = bbox_outside_weights * in_loss_box
         loss_box = out_loss_box
+        
         for i in sorted(dim, reverse=True):
             loss_box = loss_box.sum(i)
             loss_box = loss_box.mean()
@@ -389,7 +390,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         for i,l in enumerate(layers_range):
             for j,e in enumerate(l):
                 if e !=-1:
-                    ratios.append( [k,1/(2**(j)), 1/(2**(i))])
+                    ratios.append( [k,1/(2**(j))/(base_layer_range[2]/8), 1/(2**(i))/(base_layer_range[0]/8)])
                     k+=1
         
         ratios= torch.from_numpy(np.array(ratios)).type_as(dets)
@@ -402,10 +403,10 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         targets_tl = torch.cat([bbox_pred_tl[:,:,0:1] / layers_h[:,:,1:2] , bbox_pred_tl[:,:,1:2] / layers_h[:,:,2:3] ] ,dim=2)
         targets_br = torch.cat([bbox_pred_br[:,:,0:1] / layers_h[:,:,1:2],  bbox_pred_br[:,:,1:2] / layers_h[:,:,2:3] ] ,dim=2)
         
-        dets[:,:,1:2] =  dets[:,:,1:2] + targets_tl[:,:,0:1]
-        dets[:,:,2:3] =  dets[:,:,2:3] + targets_tl[:,:,1:2]
-        dets[:,:,3:4] =  dets[:,:,3:4] + targets_br[:,:,0:1]
-        dets[:,:,4:5] =  dets[:,:,4:5] + targets_br[:,:,1:2]
+        dets[:,:,1:2] =  dets[:,:,1:2] - targets_tl[:,:,0:1]
+        dets[:,:,2:3] =  dets[:,:,2:3] - targets_tl[:,:,1:2]
+        dets[:,:,3:4] =  dets[:,:,3:4] - targets_br[:,:,0:1]
+        dets[:,:,4:5] =  dets[:,:,4:5] - targets_br[:,:,1:2]
         
         
         batch, rois, classes = cls_prob.size()

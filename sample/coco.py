@@ -347,7 +347,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             if e !=-1:
                 output_sizes.append([input_size[0]//(8*2**(j)), input_size[1]//(8*2**(i))])
                 _dict[(i+1)*10+(j+1)]=e
-                ratios[k] = [1/(8*2**(j)), 1/(8*2**(i))]
+                ratios[k] = [1/(2**(j))/(base_layer_range[2]), 1/(2**(i))/(base_layer_range[0])]
                 k+=1
     
     layers_range=[_dict[i] for i in sorted(_dict)]
@@ -366,13 +366,12 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     tag_masks   = [np.zeros((batch_size, max_tag_len), dtype=bool) for output_size in output_sizes]
     tag_lens    = [np.zeros((batch_size, ), dtype=np.int32) for output_size in output_sizes]
 
-#     db_size = db.db_inds.size
-    db_size = 10
+    db_size = db.db_inds.size
     
 
     for b_ind in range(batch_size):
-#         if not debug and k_ind == 0:
-#             db.shuffle_inds()
+        if not debug and k_ind == 0:
+            db.shuffle_inds()
 
         db_ind = db.db_inds[k_ind]
         k_ind  = (k_ind + 1) % db_size
