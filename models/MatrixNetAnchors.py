@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torchvision.ops.roi_align as roi_align
 import torch.nn.functional as F
 from .py_utils.loss_utils import _regr_loss, _neg_loss
 from torch.autograd import Variable
@@ -9,7 +10,6 @@ from .py_utils.utils import conv1x1, conv3x3
 from .matrixnet import _sigmoid, MatrixNet, _gather_feat, _tranpose_and_gather_feat, _topk, _nms
 from .proposal_target_layer_cascade import _ProposalTargetLayer
 import numpy as np
-import torchvision.ops.roi_align as roi_align
 import matplotlib.pyplot as plt
 import time
 import cv2
@@ -149,7 +149,7 @@ class model(nn.Module):
         self.MASK_SIZE = 28
         linearfiltersize = self.nchannels * (self.POOLING_SIZE-1)*(self.POOLING_SIZE-1)
         self.rpn = MatrixNetAnchors(self.classes, resnet, layers)
-        self._decode = _decode
+        self._decode_bbox = _decode_bbox
         self.proposals_generators = ProposalGenerator(db)
         self.proposal_target_layer = _ProposalTargetLayer(self.classes) #80 or 81
         self.RCNN_roi_align = RoIAlignMatrixNet(self.POOLING_SIZE, self.POOLING_SIZE)
@@ -264,22 +264,53 @@ class model(nn.Module):
         _, inds = torch.topk(rois[:,:, 6], rois.size(1))
         rois = _gather_feat(rois, inds)
         
-        #rois, rois_label, bbox_targets, bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois)
-        pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
-
+        _, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
+        
         pooled_feat = self.RCNN_head(pooled_feat)
         bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
         bbox_pred_tl = bbox_pred_tl.view(batch_size, nroi, 2)
-        
         bbox_pred_br = self.RCNN_bbox_pred_br(pooled_feat)
-        bbox_pred_br = bbox_pred_br.view(batch_size, nroi, 2)
-        
+        bbox_pred_br = bbox_pred_br.view(batch_size, nroi, 2)        
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, dim = 1)
         cls_score = cls_score.view(batch_size, nroi, -1)
         cls_prob = cls_prob.view(batch_size, nroi, -1)
-        decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
-        return decoded
+        bboxes_decoded = self._decode_bbox(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
+        
+        batch_size, prenms_nroi, _ = bboxes_decoded.shape
+        bboxes_for_masks=bboxes_decoded.new(batch_size, prenms_nroi, 7).zero_()
+#         print(bboxes_decoded[0:,1:4,:])
+        
+        bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,5:6] #score
+        bboxes_for_masks[:,:,1:5] = bboxes_decoded[:,:,0:4]*8 #bbox cords
+        bboxes_for_masks[:,:,5:6] = bboxes_decoded[:,:,7:8] #classes
+        bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer
+        
+#         print("-----",bboxes_for_masks[0:,1:4,:])
+#         bboxes_for_masks_post_nms = bboxes_for_masks.new(batch_size, 100, 7 ).zero_()
+        
+#         bboxes_decoded_post_nms = bboxes_decoded.new(batch_size, 100, 8 ).zeros_()
+
+#         for b_ind in batch_size:
+#             keeps = ops.nms(bboxes_for_masks[bind][:,1:5], bboxes_for_masks[b_ind][:,5], iou_threshold=0.5)
+#             keeps = keeps[:100]
+#             bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
+#             bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
+            
+       
+            
+#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
+        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
+        
+        pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
+        masks_preds = self.RCNN_mask(pooled_masks)
+        
+        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )      
+#         mask_preds = mask_preds[:,:,:,bboxes_decoded_post_nms[:,:,5]]
+#         masks_preds = masks_preds[:,:,:,bboxes_for_masks[:,:,5].long()]
+        
+#         print(bboxes_for_masks.shape)
+        return bboxes_decoded, masks_preds
     
     def forward(self, *xs, **kwargs):
         if len(xs) > 1:
@@ -505,7 +536,7 @@ class ProposalGenerator(nn.Module):
         pass
 
 
-def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score, cls_prob, 
+def _decode_bbox(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score, cls_prob, 
    K=2000, kernel=1,layers_range = None,dist_threshold=0.2,
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
@@ -545,5 +576,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         dets = torch.gather(dets, 1, inds)
         dets[:,:,0] =  torch.sqrt(topk_scores[:,:] * dets[:,:,0])
         dets[:,:,5] = topk_clses
-        dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,0:1], dets[:,:,5:6]], dim =2)
+        #2nd last is layer
+        dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,6:7], dets[:,:,5:6]], dim =2)
         return dets_return
+    
