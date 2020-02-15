@@ -1,7 +1,7 @@
 {
     "system": {
         "dataset": "MSCOCO",
-        "batch_size": 7,
+        "batch_size": 4,
         "sampling_function": "anchors_detection_matrixnets",
 	"model_name": "MatrixNetAnchors",
 
@@ -20,7 +20,7 @@
         "stepsize": 130000,
         "snapshot": 500,
 
-        "chunk_sizes": [3,4],
+        "chunk_sizes": [2,2],
 	"cache_dir" : "./MatrixNetAnchorsResnet50_FPN_48LayerRange_640isize",
 	"data_dir": "./data/"
     },
@@ -59,7 +59,7 @@
         "max_per_image": 500,
         "merge_bbox": false,
         "weight_exp": 8,
-	"cutout":true,
+	"cutout":false,
         "top_k": 2000,
         "backbone": "resnet50"
     }

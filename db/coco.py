@@ -10,6 +10,7 @@ from db.detection import DETECTION
 from config import system_configs
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+from pycocotools import mask as maskUtils
 
 class MSCOCO(DETECTION):
     def __init__(self, db_config, split):
@@ -73,10 +74,10 @@ class MSCOCO(DETECTION):
             print("No cache file found...")
             self._extract_data()
             with open(self._cache_file, "wb") as f:
-                pickle.dump([self._detections, self._image_ids], f)
+                pickle.dump([self._detections,self._segmentations, self._image_ids], f)
         else:
             with open(self._cache_file, "rb") as f:
-                self._detections, self._image_ids = pickle.load(f)
+                self._detections, self._segmentations, self._image_ids = pickle.load(f)
 
     def _load_coco_data(self):
         self._coco = COCO(self._label_file)
@@ -100,7 +101,6 @@ class MSCOCO(DETECTION):
     def _extract_data(self):
         self._coco    = COCO(self._label_file)
         self._cat_ids = self._coco.getCatIds()
-
         coco_image_ids = self._coco.getImgIds()
 
         self._image_ids = [
@@ -108,34 +108,63 @@ class MSCOCO(DETECTION):
             for img_id in coco_image_ids
         ]
         self._detections = {}
+        self._segmentations ={}
+        
         for ind, (coco_image_id, image_id) in enumerate(tqdm(zip(coco_image_ids, self._image_ids))):
             image      = self._coco.loadImgs(coco_image_id)[0]
             bboxes     = []
             categories = []
-
+            instance_masks = []
+            
             for cat_id in self._cat_ids:
                 annotation_ids = self._coco.getAnnIds(imgIds=image["id"], catIds=cat_id)
                 annotations    = self._coco.loadAnns(annotation_ids)
                 category       = self._coco_to_class_map[cat_id]
                 for annotation in annotations:
+                    
                     bbox = np.array(annotation["bbox"])
+                    h, w = bbox[[2,3]]
                     bbox[[2, 3]] += bbox[[0, 1]]
-                    bboxes.append(bbox)
-
+#                     print(bbox.shape)
+                    if category:
+#                         t = self._coco.imgs[annotation['image_id']]
+#                         h, w = t['height'], t['width']
+                        m =  np.array(annotation['segmentation'])
+#                         print(m)
+#                         print(m.shape)
+                        if len(m.shape) < 2:
+                            continue
+#                     if m.max() < 1:
+#                         continue     
+                    if annotation['iscrowd']:
+                        category *= -1
                     categories.append(category)
-
+                    instance_masks.append(m)
+                    bboxes.append(bbox)
+#             print(instance_masks) 
             bboxes     = np.array(bboxes, dtype=float)
             categories = np.array(categories, dtype=float)
-            if bboxes.size == 0 or categories.size == 0:
+#             instance_masks = np.stack(instance_masks, axis=2)
+            if bboxes.size == 0 or categories.size == 0 :
                 self._detections[image_id] = np.zeros((0, 5), dtype=np.float32)
+                self._segmentations[image_id] = np.zeros((0, 2), dtype=np.int)
+                
             else:
                 self._detections[image_id] = np.hstack((bboxes, categories[:, None]))
-
+                self._segmentations[image_id] = instance_masks
+ 
+    
     def detections(self, ind):
         image_id = self._image_ids[ind]
         detections = self._detections[image_id]
 
         return detections.astype(float).copy()
+    
+    def segmentations(self, ind):
+        image_id = self._image_ids[ind]
+        segmentations = self._segmentations[image_id]
+
+        return segmentations.copy()
 
     def _to_float(self, x):
         return float("{:.2f}".format(x))

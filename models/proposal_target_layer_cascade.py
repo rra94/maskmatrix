@@ -14,7 +14,7 @@ import torch.nn as nn
 import numpy as np
 import numpy.random as npr
 #from ..utils.config import cfg
-from .bbox_transform import bbox_overlaps_batch, bbox_transform_batch
+from .bbox_transform import bbox_overlaps_batch, bbox_transform_batch, crop_and_resize
 import pdb
 
 class _ProposalTargetLayer(nn.Module):
@@ -32,8 +32,9 @@ class _ProposalTargetLayer(nn.Module):
         self.FG_THRESH = 0.7
         self.BG_THRESH_HI = 0.3
         self.BG_THRESH_LO = 0.0
+        self.mask_shape = 28
         self.BBOX_INSIDE_WEIGHTS = torch.FloatTensor([1,1,1,1])
-    def forward(self, all_rois, gt_boxes, ratios):
+    def forward(self, all_rois, gt_boxes, gt_masks, ratios):
         #gt_boxes_append = gt_boxes.new(gt_boxes.size()).zero_()
         #print(gt_boxes.shape)
         #print(gt_boxes_append.size())
@@ -50,13 +51,13 @@ class _ProposalTargetLayer(nn.Module):
         fg_rois_per_image = int(np.round(0.25 * rois_per_image))
         fg_rois_per_image = 1 if fg_rois_per_image == 0 else fg_rois_per_image
 
-        labels, rois, bbox_targets_tl, bbox_targets_br, bbox_inside_weights = self._sample_rois_pytorch(
-            all_rois, gt_boxes, fg_rois_per_image,
+        labels, rois, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, target_mask = self._sample_rois_pytorch(
+            all_rois, gt_boxes, gt_masks, fg_rois_per_image,
             rois_per_image, self._num_classes, ratios)
 
         bbox_outside_weights = (bbox_inside_weights > 0).float()
 
-        return rois, labels, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights
+        return rois, labels, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights, target_mask
 
     def backward(self, top, propagate_down, bottom):
         """This layer does not propagate gradients."""
@@ -66,7 +67,7 @@ class _ProposalTargetLayer(nn.Module):
         """Reshaping happens during the call to forward."""
         pass
 
-    def _get_bbox_regression_labels_pytorch(self, bbox_target_tl_data, bbox_target_br_data , labels_batch, num_classes):
+    def _get_bbox_regression_labels_pytorch(self, bbox_target_tl_data, bbox_target_br_data , labels_batch, num_classes, target_mask_batch_data):
         """Bounding-box regression targets (bbox_target_data) are stored in a
         compact form b x N x (class, tx, ty, tw, th)
 
@@ -83,7 +84,7 @@ class _ProposalTargetLayer(nn.Module):
         clss = labels_batch
         bbox_targets_tl = bbox_target_tl_data.new(batch_size, rois_per_image, 2).zero_()
         bbox_targets_br = bbox_target_br_data.new(batch_size, rois_per_image, 2).zero_()
-        
+        target_mask_batch = target_mask_batch_data.new(batch_size, rois_per_image, self.mask_shape, self.mask_shape).zero_()
         bbox_inside_weights = bbox_target_br_data.new(batch_size, rois_per_image, 4).zero_()
 
         for b in range(batch_size):
@@ -95,11 +96,11 @@ class _ProposalTargetLayer(nn.Module):
                 ind = inds[i]
                 bbox_targets_tl[b, ind, :] = bbox_target_tl_data[b, ind, :]
                 bbox_targets_br[b, ind, :] = bbox_target_br_data[b, ind, :]
-                
-                
+                target_mask_batch[b, ind, :] = target_mask_batch[b, ind, :] 
+   
                 bbox_inside_weights[b, ind, :] = self.BBOX_INSIDE_WEIGHTS
 
-        return bbox_targets_tl, bbox_targets_br, bbox_inside_weights
+        return bbox_targets_tl, bbox_targets_br, bbox_inside_weights, target_mask_batch
 
 
     def _compute_targets_pytorch(self, ex_rois, gt_rois, ratios):
@@ -122,7 +123,7 @@ class _ProposalTargetLayer(nn.Module):
         return targets_tl, targets_br
 
 
-    def _sample_rois_pytorch(self, all_rois, gt_boxes, fg_rois_per_image, rois_per_image, num_classes, ratios):
+    def _sample_rois_pytorch(self, all_rois, gt_boxes, gt_masks, fg_rois_per_image, rois_per_image, num_classes, ratios):
         """Generate a random sample of RoIs comprising foreground and background
         examples.
         """
@@ -146,7 +147,8 @@ class _ProposalTargetLayer(nn.Module):
         rois_batch  = all_rois.new(batch_size, rois_per_image, 7).zero_()
         gt_rois_batch = all_rois.new(batch_size, rois_per_image, 7).zero_()
         ratios_batch = torch.from_numpy(np.zeros((batch_size,rois_per_image, 2), dtype=np.float32))
-
+        target_mask_batch = all_rois.new(batch_size, rois_per_image, self.mask_shape, self.mask_shape).zero_()
+        
         # Guard against the case when an image has fewer than max_fg_rois_per_image
         # foreground RoIs
         for i in range(batch_size):
@@ -210,17 +212,34 @@ class _ProposalTargetLayer(nn.Module):
             # Clamp labels for the background RoIs to 0
             if fg_rois_per_this_image < rois_per_image:
                 labels_batch[i][fg_rois_per_this_image:] = 0
-
+#             boxes = all_rois[i][fg_inds]
             rois_batch[i] = all_rois[i][keep_inds]
-            #rois_batch[i,:,0] = i
-
+            
             gt_rois_batch[i] = gt_boxes[i][gt_assignment[i][keep_inds]]
+            
+            roi_masks = gt_masks[i][gt_assignment[i][keep_inds]]
+            #normalise bbox cords
+            norm_boxes = rois_batch[i].clone().detach()
+            norm_gt = gt_rois_batch[i].clone().detach()
+            norm_boxes =norm_boxes - norm_gt
+            
+            dh = norm_gt[:,2:3]-norm_gt[:, 0:1]
+            dw = norm_gt[:,3:4]-norm_gt[:, 1:2]
+            norm_boxes = torch.cat([norm_boxes[:, 0:1]/dh,norm_boxes[:, 1:2]/dw ,norm_boxes[:, 2:3]/dh,norm_boxes[:, 3:4]/dw ] ,dim=1).clone().detach()
+#             print(norm_boxes.shape, ("NORMBOXES"))
+            masks = crop_and_resize(roi_masks, norm_boxes, self.mask_shape).clone().detach()
+#             masks = torch.round(masks).clone().detach()
+#             print(masks.shape, ("NORMBOXES"))
+            target_mask_batch[i] = masks
+            
+            
         #print(rois_batch)
         #print(gt_rois_batch)
         bbox_target_data_tl , bbox_target_data_br  = self._compute_targets_pytorch(
                 rois_batch, gt_rois_batch, ratios)
 
-        bbox_targets_tl, bbox_targets_br, bbox_inside_weights = \
-                self._get_bbox_regression_labels_pytorch(bbox_target_data_tl , bbox_target_data_br, labels_batch, num_classes)
+        bbox_targets_tl, bbox_targets_br, bbox_inside_weights, mask_target = \
+                self._get_bbox_regression_labels_pytorch(bbox_target_data_tl , bbox_target_data_br, labels_batch, num_classes, target_mask_batch)
+        
 
-        return labels_batch, rois_batch, bbox_targets_tl, bbox_targets_br, bbox_inside_weights
+        return labels_batch, rois_batch, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, mask_target

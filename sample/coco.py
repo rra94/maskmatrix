@@ -6,84 +6,124 @@ import random
 import string
 from random import randrange
 
-
-
 from config import system_configs
 from utils import crop_image, normalize_, color_jittering_, lighting_
-from .utils import random_crop, draw_gaussian, gaussian_radius
+from .utils import random_crop, draw_gaussian, gaussian_radius,  resize_mask
+from models.bbox_transform import crop_and_resize
+from pycocotools import mask as maskUtils
+from .visualize import display_instances
 
-def _full_image_crop(image, detections):
+from pdb import set_trace as bp
+
+
+def minimize_mask(mask, bbox, minimask_shape):
+    """Resize masks to a smaller version to cut memory load.
+    Mini-masks can then resized back to image scale using expand_masks()
+    """
+    mini_mask = np.zeros((mask.shape[0],)+minimask_shape, dtype=bool)
+    for i in range(mask.shape[0]):
+        m = mask[i,:, :]
+        x1, y1, x2, y2 = bbox[i][:4].astype(int)
+        m = m[x1:x2, y1:y2]
+        if m.size == 0:
+            raise Exception("Invalid bounding box with area of zero")
+        m = cv2.resize(m.astype(float), minimask_shape)
+        mini_mask[i:, :] = np.where(m >= 128, 1, 0)
+    return mini_mask
+
+
+def annToRLE(input_size, segm):
+    """
+    Convert annotation which can be polygons, uncompressed RLE to RLE.
+    :return: binary mask (numpy 2D array)
+    """
+#     t = self.imgs[ann['image_id']]
+#     h, w = t['height'], t['width']
+#     segm = ann['segmentation
+    h,w = input_size
+#     segm = segm.tolist()
+#     print(segm)
+    if type(segm) == list:
+        # polygon -- a single object might consist of multiple parts
+        # we merge all parts into one mask rle code
+        rles = maskUtils.frPyObjects(segm, h, w)
+        rle = maskUtils.merge(rles)
+    elif type(segm['counts']) == list:
+        # uncompressed RLE
+        rle = maskUtils.frPyObjects(segm, h, w)
+    else:
+        # rle
+        rle = ann['segmentation']
+    return rle
+    
+def _full_image_crop(image, detections,segmentations):
     detections    = detections.copy()
+    segmentations = [seg.copy() for seg in segmentations]
     height, width = image.shape[0:2]
-
+        
     max_hw = max(height, width)
     center = [height // 2, width // 2]
     size   = [max_hw, max_hw]
-
+    
     image, border, offset = crop_image(image, center, size)
     detections[:, 0:4:2] += border[2]
     detections[:, 1:4:2] += border[0]
-    return image, detections
+    for seg in segmentations:
+        seg[:,0::2] += border[2] 
+        seg[:,1::2] += border[0] 
+#     print(segmentations, " ----9-9-9-")
+#     segmentations[:, 1::2] += border[0]
+    # = resize_mask(segmentations, size)
+    return image, detections, segmentations
 
-def _resize_image(image, detections, size):
+
+def _resize_image(image, detections, size, segmentations):
     detections    = detections.copy()
+    segmentations = [seg.copy() for seg in segmentations]
     height, width = image.shape[0:2]
+#     print(height, width, "")
     new_height, new_width = size
 
     image = cv2.resize(image, (new_width, new_height))
-    
     height_ratio = new_height / height
     width_ratio  = new_width  / width
     detections[:, 0:4:2] *= width_ratio
     detections[:, 1:4:2] *= height_ratio
-    return image, detections
-
-def _rescale_image(image, detections, max_dim):
-    detections    = detections.copy()
-    height, width = image.shape[0:2]
+# #     print(segmentations[1])
+    for seg in segmentations:
+#         print(seg.shape)
+        seg[:,0::2] *= width_ratio 
+        seg[:,1::2] *= height_ratio 
+#     print("---------",segmentations[1])
+#     segmentations[:, 0::2] *= width_ratio
+#     segmentations[:, 1::2] *= height_ratio
+#     print(height_ratio, width_ratio, "--------------")
     
-    if height > width:
-        scaleh = max_dim/float(height)
-        scalew = scaleh * (1 + 0.1 * np.random.normal())
-    else:
-        scalew = max_dim/float(width) 
-        scaleh = scalew + 0.2 * np.random.normal()
-
+#     segmentations = resize_mask(segmentations, height_ratio , width_ratio )
     
-    new_height = int(height * scaleh)
-    new_width = int(width * scalew)
+    return image, detections, segmentations
 
-    image = cv2.resize(image, (new_width, new_height))
-    
-    height_ratio = new_height / height
-    width_ratio  = new_width  / width
-    detections[:, 0:4:2] *= width_ratio
-    detections[:, 1:4:2] *= height_ratio
-    return image, detections
 
-def _clip_detections(image, detections):
+def _clip_detections(image, detections, segmentations):
     detections    = detections.copy()
     height, width = image.shape[0:2]
 
     detections[:, 0:4:2] = np.clip(detections[:, 0:4:2], 0, width - 1)
     detections[:, 1:4:2] = np.clip(detections[:, 1:4:2], 0, height - 1)
+    
+    for seg in segmentations:
+        seg[:, 0::2] = np.clip(seg[:, 0::2], 0, width - 1)
+        seg[:, 1::2] = np.clip(seg[:, 1::2], 0, height - 1)
+
     keep_inds  = ((detections[:, 2] - detections[:, 0]) > 0) & \
                  ((detections[:, 3] - detections[:, 1]) > 0)
+#     print(keep_inds)
     detections = detections[keep_inds]
-    return detections
-
-
-def layer_map(width, height, width_thresholds, height_thresholds):
+    segmentations = [seg for i,seg in enumerate(segmentations) if keep_inds[i] ]
     
-    for i, threshold in enumerate(width_thresholds):
-        if width < threshold:
-            x_layer = i
-            break
-    for i, threshold in enumerate(height_thresholds):
-        if height < threshold:
-            y_layer = i
-            break
-    return x_layer, y_layer
+    return detections, segmentations
+
+
 
 def layer_map_using_ranges(width, height, layer_ranges, fpn_flag=0):
     layers = []
@@ -191,11 +231,10 @@ def samples_MatrixNetCorners(db, k_ind, data_aug, debug):
         # reading image
         image_file = db.image_file(db_ind)
         image      = cv2.imread(image_file)
-        
-        
         # reading detections
         detections = db.detections(db_ind)
-            
+     
+             #add seg cutout and crop
         if cutout_flag:
             image = cutout(image, detections)
 
@@ -203,32 +242,17 @@ def samples_MatrixNetCorners(db, k_ind, data_aug, debug):
             image, detections = random_crop(image, detections, rand_scales, input_size, border=border)
         else:
             image, detections = _full_image_crop(image, detections)
-
-        image, detections = _resize_image(image, detections, input_size)
+        #resize sw
+        image, detections  = _resize_image(image, detections, input_size)
         detections = _clip_detections(image, detections)
 
-        
-        if False:
-            for j in range(1):
-                color     = np.random.random((3, )) * 0.6 + 0.4
-                color     = color * 255
-                color     = color.astype(np.int32).tolist()
-                for bbox in detections:
-
-                    bbox  = bbox[0:4].astype(np.int32)
-                    cv2.rectangle(image,
-                        (bbox[0], bbox[1]),
-                        (bbox[2], bbox[3]),
-                        color, 2
-                    ) 
-            cv2.imwrite('test.jpg',image)
         
         # flipping an image randomly
         if not debug and np.random.uniform() > 0.5:
             image[:] = image[:, ::-1, :]
             width    = image.shape[1]
             detections[:, [0, 2]] = width - detections[:, [2, 0]] - 1
-        
+        #add seg flip
         if not debug:
             image = image.astype(np.float32) / 255.
             if rand_color:
@@ -336,7 +360,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     height_thresholds = db.configs["height_thresholds"]
     layers_range = db.configs["layers_range"]
     max_tag_len = 256
-
+    minimask_shape = (56, 56)
     ratios ={}
     _dict={}
     output_sizes=[]
@@ -347,25 +371,25 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             if e !=-1:
                 output_sizes.append([input_size[0]//(8*2**(j)), input_size[1]//(8*2**(i))])
                 _dict[(i+1)*10+(j+1)]=e
-                ratios[k] = [1/(8*2**(j)), 1/(8*2**(i))]
+                ratios[k] = [1/(2**(j))/(base_layer_range[2]), 1/(2**(i))/(base_layer_range[0])]
                 k+=1
     
     layers_range=[_dict[i] for i in sorted(_dict)]
     fpn_flag = set(_dict.keys()) == set([11,22,33,44,55]) #creating fpn flag
     
-   
   
     images      = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32)
     anchors_heatmaps = [np.zeros((batch_size, 1, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
     detections_batch     = np.zeros((batch_size,200, 7), dtype=np.float32) 
-    
+    segmentations_batch =  np.zeros((batch_size,200, minimask_shape[0],minimask_shape[1] ), dtype=np.bool) 
     tl_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     br_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     
     anchors_tags = [np.zeros((batch_size, max_tag_len), dtype=np.int64) for output_size in output_sizes]
     tag_masks   = [np.zeros((batch_size, max_tag_len), dtype=bool) for output_size in output_sizes]
     tag_lens    = [np.zeros((batch_size, ), dtype=np.int32) for output_size in output_sizes]
-
+    
+    
 #     db_size = db.db_inds.size
     db_size = 10
     
@@ -384,25 +408,39 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         
         # reading detections
         detections = db.detections(db_ind)
-         
-        if cutout_flag:
-            image = cutout(image, detections)
+        segmentations = db.segmentations(db_ind)
 
+       
         if not debug and rand_crop:
-            image, detections = random_crop(image, detections, rand_scales, input_size, border=border)
+            image, detections,segmentations = random_crop(image, detections, rand_scales, input_size, border=border, segmentations=segmentations)
         else:
-            image, detections = _full_image_crop(image, detections)
+            image, detections, segmentations = _full_image_crop(image, detections, segmentations)
+        
+        
+        
+        image, detections, segmentations = _resize_image(image, detections, input_size, segmentations)
+              
+        detections, segmentations = _clip_detections(image, detections, segmentations)
+        
 
-        image, detections = _resize_image(image, detections, input_size)
-        detections = _clip_detections(image, detections)
-        #detections[:,-1]+=1 
         # flipping an image randomly
 
         if not debug and np.random.uniform() > 0.5:
             image[:] = image[:, ::-1, :]
             width    = image.shape[1]
             detections[:, [0, 2]] = width - detections[:, [2, 0]] - 1
+            
+            for seg in segmentations:
+                seg[:, 0::2] = width - seg[:, 0::2] - 1
+            
         
+        
+        segmentations = [maskUtils.decode(annToRLE(image.shape[:2] , rle.tolist())) for rle in segmentations]
+        segmentations = np.stack(segmentations, axis=2).astype(np.bool)
+#         print(segmentations.shape, "ghdhdh")
+        segmentations=segmentations.transpose((2, 0, 1))
+#         print(segmentations.shape, "ghdhdh")
+#         display_instances(image, np.array(detections), segmentations, np.array(detections[:,-1]))       
         if not debug:
             image = image.astype(np.float32) / 255.
             if rand_color:
@@ -410,7 +448,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 if lighting:
                     lighting_(data_rng, image, 0.1, db.eig_val, db.eig_vec)
         images[b_ind] = image.transpose((2, 0, 1))
-        
+               
         dets = []
         
         for ind, detection in enumerate(detections):
@@ -470,6 +508,8 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 
         if len(dets) > 0:
             detections_batch[b_ind][:len(dets),:] = np.array(dets)
+            segmentations_batch[b_ind][:segmentations.shape[0],:,:] = minimize_mask(segmentations, detections, minimask_shape)
+
         else:
             print("zero dets in image")
         
@@ -477,6 +517,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         for olayer_idx in range(len(tag_lens)):
             tag_len = tag_lens[olayer_idx][b_ind]
             tag_masks[olayer_idx][b_ind, :tag_len] = 1
+    
 
     images      = [torch.from_numpy(images)]
     anchors_heatmaps = [torch.from_numpy(anchors) for anchors in anchors_heatmaps]
@@ -487,9 +528,19 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     detections_batch = [torch.from_numpy(detections_batch)]
     ratios =[ [ [i]+ ratios[i] for i in ratios] for _ in range(batch_size)]
     ratios = [torch.from_numpy(np.array(ratios))]
+    segmentations_batch = [torch.from_numpy(segmentations_batch)]
+#     print(detections_batch.size(), "----")
+
+#     print(segmentations_batch.size(), "----")
+    
+#     for b_ind in range(batch_size):
+#         segmentations_batch[b_ind] = crop_and_resize(segmentations_batch[b_ind], detections_batch[b_ind][0] , 56 )
+        
+#     display_instances(image[0], np.array(detections[0]), segmentations[0], np.array(detections[0][:,-1]))
+    
 #     print(ratios)
     return {
-        "xs": [images, anchors_tags, detections_batch, ratios],
+        "xs": [images, anchors_tags, detections_batch, ratios, segmentations_batch],
         "ys": [anchors_heatmaps, tl_corners_regrs, br_corners_regrs, tag_masks]
     }, k_ind
 def sample_data(db, k_ind, data_aug=True, debug=False):

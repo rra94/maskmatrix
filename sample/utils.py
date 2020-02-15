@@ -1,5 +1,9 @@
 import cv2
 import numpy as np
+import scipy.misc
+import scipy.ndimage
+import skimage.color
+import skimage.io
 
 def gaussian2D(shape, sigma=1):
     m, n = [(ss - 1.) / 2. for ss in shape]
@@ -52,14 +56,15 @@ def _get_border(border, size):
         i *= 2
     return border // i
 
-def random_crop(image, detections, random_scales, view_size, border=64):
+def random_crop(image, detections, random_scales, view_size, border=64, segmentations=None):
     view_height, view_width   = view_size
     image_height, image_width = image.shape[0:2]
 
     scale  = np.random.choice(random_scales)
     height = int(view_height * scale)
     width  = int(view_width  * scale)
-
+    
+    
     cropped_image = np.zeros((height, width, 3), dtype=image.dtype)
 
     w_border = _get_border(border, image_width)
@@ -82,9 +87,31 @@ def random_crop(image, detections, random_scales, view_size, border=64):
 
     # crop detections
     cropped_detections = detections.copy()
+    segmentations = [seg.copy() for seg in segmentations]
     cropped_detections[:, 0:4:2] -= x0
     cropped_detections[:, 1:4:2] -= y0
+    for seg in segmentations:
+        seg[:,0::2] -= x0 
+        seg[:,1::2] -= y0 
     cropped_detections[:, 0:4:2] += cropped_ctx - left_w
-    cropped_detections[:, 1:4:2] += cropped_cty - top_h
+    cropped_detections[1:4:2] += cropped_cty - top_h
+    for seg in segmentations:
+        seg[:,0::2] += cropped_ctx - left_w 
+        seg[:,1::2] += cropped_cty - top_h  
 
-    return cropped_image, cropped_detections
+    return cropped_image, cropped_detections,segmentations
+
+def resize_mask(mask, input_size):
+    """Resizes a mask using the given scale and padding.
+    Typically, you get the scale and padding from resize_image() to
+    ensure both, the image and the mask, are resized consistently.
+    scale: mask scaling factor
+    padding: Padding to add to the mask in the form
+            [(top, bottom), (left, right), (0, 0)]
+    """
+    h, w = mask.shape[:2]
+    height_ratio , width_ratio = input_size[0]/h, input_size[1]/w
+    mask = scipy.ndimage.zoom(mask, zoom=[height_ratio , width_ratio, 1], order=0)
+#     mask = np.pad(mask, padding, mode='constant', constant_values=0)
+    return mask
+

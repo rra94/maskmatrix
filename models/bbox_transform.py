@@ -11,6 +11,7 @@
 import torch
 import numpy as np
 import pdb
+import torchvision.ops.roi_align
 
 def bbox_transform(ex_rois, gt_rois):
     ex_widths = ex_rois[:, 2] - ex_rois[:, 0] + 1.0
@@ -234,3 +235,35 @@ def bbox_overlaps_batch(anchors, gt_boxes):
     overlaps.masked_fill_(gt_area_zero.view(batch_size, 1, K).expand(batch_size, N, K), 0)
     overlaps.masked_fill_(anchors_area_zero.view(batch_size, N, 1).expand(batch_size, N, K), -1)
     return overlaps
+
+
+def crop_and_resize(mask, boxes, mask_size):
+    """
+    Crop each bitmask by the given box, and resize results to (mask_size, mask_size).
+    This can be used to prepare training targets for Mask R-CNN.
+    It has less reconstruction error compared to rasterization with polygons.
+    However we observe no difference in accuracy,
+    but BitMasks requires more memory to store all the masks.
+    Args:
+        boxes (Tensor): Nx4 tensor storing the boxes for each mask
+        mask_size (int): the size of the rasterized mask.
+    Returns:
+        Tensor:
+            A bool tensor of shape (N, mask_size, mask_size), where
+            N is the number of predicted boxes for this image.
+    """
+    
+    assert len(boxes) == len(mask), "{} != {}".format(len(boxes), len(mask))
+    device = mask.device
+    
+
+    batch_inds = torch.arange(len(boxes), device=device).to(dtype=boxes.dtype)[:, None]
+    rois = torch.cat([batch_inds, boxes], dim=1)  # Nx5
+
+    bit_masks = mask.to(dtype=torch.float32)
+    rois = rois.to(device=device)
+    output = torchvision.ops.roi_align(bit_masks[:, None, :, :], rois, (mask_size, mask_size), 1.0, 0).squeeze(1)
+    
+#     print(output.size(), "SIZEEEEEEE")
+    output = output >= 0.5
+    return output

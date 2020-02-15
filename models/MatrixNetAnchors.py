@@ -70,21 +70,89 @@ class MatrixNetAnchors(nn.Module):
         anchors_heatmaps = [_sigmoid(self.subnet_anchors_heats(feature)) for feature in features]
         return features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr
     
+# class SamePad2d(nn.Module):
+#     """Mimics tensorflow's 'SAME' padding.
+#     """
+#     def __init__(self, kernel_size, stride):
+#         super(SamePad2d, self).__init__()
+#         self.kernel_size = torch.nn.modules.utils._pair(kernel_size)
+#         self.stride = torch.nn.modules.utils._pair(stride)
+
+#     def forward(self, input):
+#         in_width = input.size(2)
+#         in_height = input.size(3)
+#         out_width = math.ceil(float(in_width) / float(self.stride[0]))
+#         out_height = math.ceil(float(in_height) / float(self.stride[1]))
+#         pad_along_width = ((out_width - 1) * self.stride[0] +
+#                            self.kernel_size[0] - in_width)
+#         pad_along_height = ((out_height - 1) * self.stride[1] +
+#                             self.kernel_size[1] - in_height)
+#         pad_left = math.floor(pad_along_width / 2)
+#         pad_top = math.floor(pad_along_height / 2)
+#         pad_right = pad_along_width - pad_left
+#         pad_bottom = pad_along_height - pad_top
+#         return F.pad(input, (pad_left, pad_right, pad_top, pad_bottom), 'constant', 0)
+
+#     def __repr__(self):
+#         return self.__class__.__name__
+
     
+class MaskLayer(nn.Module):
+    def __init__(self, depth, pool_size, num_classes ):
+        super(MaskLayer, self).__init__()
+        self.depth = depth
+        self.pool_size = pool_size
+        self.num_classes = num_classes
+#         self.padding = SamePad2d(kernel_size=3, stride=1)
+        self.conv1 = conv3x3(self.depth, 256, stride=1, padding =1)
+        self.bn1 = nn.BatchNorm2d(256, eps=0.001)
+        self.conv2 = conv3x3(256, 256, stride=1,padding =1)
+        self.bn2 = nn.BatchNorm2d(256, eps=0.001)
+        self.conv3 = conv3x3(256, 256, stride=1 ,padding =1)
+        self.bn3 = nn.BatchNorm2d(256, eps=0.001)
+        self.conv4 = conv3x3(256, 256, stride=1,padding =1)
+        self.bn4 = nn.BatchNorm2d(256, eps=0.001)
+        self.deconv = nn.ConvTranspose2d(256, 256, kernel_size=2, stride=2)
+        self.conv5 = conv1x1(256, num_classes, stride=1)
+        self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU(inplace=True)
+    
+    def forward(self, x ):
+#         x = pyramid_roi_align([rois] + x, self.pool_size, self.image_shape)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu(x)
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu(x)
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = self.relu(x)
+        x = self.deconv(x)
+        x = self.relu(x)
+        x = self.conv5(x)
+        x = self.sigmoid(x)
+        return x
+        
+
 class model(nn.Module):
     def __init__(self, db):
         super(model, self).__init__()
         self.classes = db.configs["categories"]
         resnet  = db.configs["backbone"]
         layers  = db.configs["layers_range"]
-        POOLING_SIZE = 7
-        nchannels = 256
-        linearfiltersize = nchannels * (POOLING_SIZE-1)*(POOLING_SIZE-1)
+        self.POOLING_SIZE = 7
+        self.nchannels = 256
+        self.MASK_SIZE = 28
+        linearfiltersize = self.nchannels * (self.POOLING_SIZE-1)*(self.POOLING_SIZE-1)
         self.rpn = MatrixNetAnchors(self.classes, resnet, layers)
         self._decode = _decode
         self.proposals_generators = ProposalGenerator(db)
         self.proposal_target_layer = _ProposalTargetLayer(self.classes) #80 or 81
-        self.RCNN_roi_align = RoIAlignMatrixNet(POOLING_SIZE, POOLING_SIZE)
+        self.RCNN_roi_align = RoIAlignMatrixNet(self.POOLING_SIZE, self.POOLING_SIZE)
         
         self.RCNN_head = nn.Sequential(nn.Linear(linearfiltersize, 1024),
                                              nn.ReLU(),
@@ -96,15 +164,18 @@ class model(nn.Module):
                                              nn.ReLU(),nn.Linear(1024, 2))
         self.RCNN_bbox_pred_br = nn.Sequential(nn.Linear(1024, 1024),
                                              nn.ReLU(),nn.Linear(1024, 2))
+        #80 classes
+        self.RCNN_mask = MaskLayer( 256, self.MASK_SIZE, self.classes-1)
 
     def _train(self, *xs):
         image = xs[0][0]
         gt_rois = xs[2][0]
         anchors_inds = xs[1]
         ratios = xs[3][0]
+        gt_masks = xs[4][0]
         features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.rpn.forward(image)
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
-        rois, rois_label, bbox_targets_tl, bbox_targets_br , bbox_inside_weights, bbox_outside_weights =self.proposal_target_layer(rois, gt_rois, ratios)
+        rois, rois_label, bbox_targets_tl, bbox_targets_br , bbox_inside_weights, bbox_outside_weights , target_mask =self.proposal_target_layer(rois, gt_rois, gt_masks, ratios)
         
         
 #         fimage = image[0] * 255
@@ -156,13 +227,22 @@ class model(nn.Module):
         bbox_inside_weights = _gather_feat(bbox_inside_weights, inds)
         bbox_outside_weights = _gather_feat(bbox_outside_weights, inds)
         
-        pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
+#         print(bbox_outside_weights.shape, "bbox_outside_weights")
+#         print(target_mask.shape, "target_mask")
+        target_mask = _gather_feat(target_mask, inds)
+        
+        pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         pooled_feat = self.RCNN_head(pooled_feat)
         bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
         bbox_pred_tl = bbox_pred_tl.view(batch_size, nroi, 2)
         
         bbox_pred_br = self.RCNN_bbox_pred_br(pooled_feat)
         bbox_pred_br = bbox_pred_br.view(batch_size, nroi, 2)
+#         print(pooled_masks.size(), "POOOOLEDMASKS")
+        pooled_masks = pooled_masks.view(batch_size*nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
+        masks_preds = self.RCNN_mask(pooled_masks)
+        
+        masks_preds = masks_preds.view(batch_size, nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )
         
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, dim = 1)
@@ -172,8 +252,8 @@ class model(nn.Module):
         for ind in range(len(anchors_inds)):
             anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
             anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
-
-        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, self.classes
+#         print(masks_preds.size(), target_mask.size())
+        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, self.classes
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
@@ -250,15 +330,18 @@ class MatrixNetAnchorsLoss(nn.Module):
             focal_loss = focal_loss / numf
         
         #classification and prediction loss
-        rois, cls_score, cls_prob, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, nclasses = outs[3:]
+        rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, nclasses = outs[3:]
+        
         RCNN_loss_cls = 0
-        RCNN_loss_bbox = self._smooth_l1_loss(bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights)
-        #print(RCNN_loss_bbox)
-        RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label.flatten().long())
-        loss = (focal_loss + corner_regr_loss) + RCNN_loss_bbox +  RCNN_loss_cls
+        RCNN_loss_bbox = self._compute_RCNN_loss_bbox(bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights)
+        rois_label = rois_label.flatten().long()
+        RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label)
+        mrcnn_mask_loss = self._compute_mrcnn_mask_loss(target_mask, rois_label, masks_preds)
+#         print(mrcnn_mask_loss)
+        loss = focal_loss + corner_regr_loss + RCNN_loss_bbox +  RCNN_loss_cls + mrcnn_mask_loss
         return loss.unsqueeze(0)
     
-    def _smooth_l1_loss(self, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
+    def _compute_RCNN_loss_bbox(self, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
         sigma_2 = sigma ** 2
         box_diff_tl = bbox_pred_tl - bbox_targets_tl
         box_diff_br =  bbox_pred_br - bbox_targets_br
@@ -274,6 +357,36 @@ class MatrixNetAnchorsLoss(nn.Module):
             loss_box = loss_box.mean()
         return loss_box
     
+    def _compute_mrcnn_mask_loss(self,target_masks, target_class_ids, pred_masks):
+#         print(target_class_ids.shape)
+#         if target_class_ids.size():
+            # Only positive ROIs contribute to the loss. And only
+            # the class specific mask of each ROI.
+        batch_size , nrois, h,w,nclasses = pred_masks.shape
+        target_masks = target_masks.view(batch_size*nrois,h,w )
+        pred_masks = pred_masks. view(batch_size*nrois,h,w ,nclasses )
+        
+        positive_ix = torch.nonzero(target_class_ids > 0).view(-1)
+ 
+        positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)
+        positive_class_ids = positive_class_ids -1
+#         print(positive_ix)
+#         indices = torch.stack((positive_ix, positive_class_ids), dim=1)
+
+        # Gather the masks (predicted and true) that contribute to loss
+        y_true = target_masks[positive_ix,:,:]
+        
+        y_pred = pred_masks[positive_ix,:,:,positive_class_ids]
+#         print(y_pred.shape)
+#         y_pred = torch.index_select(y_pred, )
+#         print(y_pred.shape)
+
+        # Binary cross entropy
+        loss = F.binary_cross_entropy(y_pred, y_true)
+
+
+        return loss
+    
 loss = MatrixNetAnchorsLoss()
 
 
@@ -284,40 +397,54 @@ class RoIAlignMatrixNet(nn.Module):
         self.aligned_height = int(aligned_height)
 
     def forward(self, features, rois):
-        batch_pooled_feats=[]
+        batch_pooled_feats = []
+        batch_pooled_masks = []
         batch_size,_,height_0, width_0 = features[0].size()
         for b in range(batch_size):
             pooled_feats = []
+            pooled_masks = []
             for i in range(len(features)-1,-1,-1):
                 keep_inds = (rois[b][:,6] == i)
                 if (torch.sum(keep_inds) == 0):
                     continue
                 roi = rois[b][keep_inds]
                 rois_cords = self.resize_rois(roi[:,1:5], features[i],height_0, width_0)
-#                 #print(rois_cords.shape) caused illegal memory error. converting to list seems to work -1/30
                 x =  roi_align(features[i][b:b+1], [rois_cords], output_size=(self.aligned_width, self.aligned_height))               
                 x = F.avg_pool2d(x, kernel_size=2, stride=1)
+                y =  roi_align(features[i][b:b+1], [rois_cords], output_size=(self.aligned_width*2, self.aligned_height*2))
+                
                 pooled_feats.append(x)
-
+                pooled_masks.append(y)
+                
             pooled_feats = torch.cat(pooled_feats, dim =0)
             pooled_feats = torch.unsqueeze(pooled_feats, dim = 0)
             batch_pooled_feats.append(pooled_feats)
+            
+            pooled_masks = torch.cat(pooled_masks, dim =0)
+            pooled_feats = torch.unsqueeze(pooled_masks, dim = 0)
+            batch_pooled_masks.append(pooled_masks)
+            
         batch_pooled_feats = torch.cat(batch_pooled_feats, dim=0)
         batch_size , n_roi, c, h, w = batch_pooled_feats.size()
         batch_pooled_feats=batch_pooled_feats.view(batch_size*n_roi,-1)
+        
+        batch_pooled_masks = torch.cat(batch_pooled_masks, dim=0)
+        batch_pooled_masks=batch_pooled_masks.view(batch_size*n_roi,-1)
+        
         #print(batch_pooled_feats.size())
-        return batch_pooled_feats, batch_size, n_roi, c ,h ,w
+        return batch_pooled_masks, batch_pooled_feats, batch_size, n_roi, c ,h ,w
 
     def resize_rois(self, rois_cords, layer,height_0, width_0):        
         _, _,  height, width = layer.size()
         width_scale  =width/(width_0*8)
         height_scale = height/(height_0*8)
-        rois_cords[:,0] *= width_scale
-        rois_cords[:,2] *= width_scale
-        rois_cords[:,1] *= height_scale
-        rois_cords[:,3] *= height_scale
+        for i in range(rois_cords.shape[1]):
+            if i%2 == 0:
+                rois_cords[:,i] *= width_scale
+            else:
+                rois_cords[:,i] *= height_scale
         return rois_cords
-
+        
 class ProposalGenerator(nn.Module):
     def __init__ (self, db):
         super(ProposalGenerator, self).__init__() 
@@ -389,7 +516,7 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         for i,l in enumerate(layers_range):
             for j,e in enumerate(l):
                 if e !=-1:
-                    ratios.append( [k,1/(2**(j)), 1/(2**(i))])
+                    ratios.append( [k,1/(2**(j))/(base_layer_range[2]/8), 1/(2**(i))/(base_layer_range[0]/8)])
                     k+=1
         
         ratios= torch.from_numpy(np.array(ratios)).type_as(dets)
@@ -402,10 +529,10 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         targets_tl = torch.cat([bbox_pred_tl[:,:,0:1] / layers_h[:,:,1:2] , bbox_pred_tl[:,:,1:2] / layers_h[:,:,2:3] ] ,dim=2)
         targets_br = torch.cat([bbox_pred_br[:,:,0:1] / layers_h[:,:,1:2],  bbox_pred_br[:,:,1:2] / layers_h[:,:,2:3] ] ,dim=2)
         
-        dets[:,:,1:2] =  dets[:,:,1:2] + targets_tl[:,:,0:1]
-        dets[:,:,2:3] =  dets[:,:,2:3] + targets_tl[:,:,1:2]
-        dets[:,:,3:4] =  dets[:,:,3:4] + targets_br[:,:,0:1]
-        dets[:,:,4:5] =  dets[:,:,4:5] + targets_br[:,:,1:2]
+        dets[:,:,1:2] =  dets[:,:,1:2] - targets_tl[:,:,0:1]
+        dets[:,:,2:3] =  dets[:,:,2:3] - targets_tl[:,:,1:2]
+        dets[:,:,3:4] =  dets[:,:,3:4] - targets_br[:,:,0:1]
+        dets[:,:,4:5] =  dets[:,:,4:5] - targets_br[:,:,1:2]
         
         
         batch, rois, classes = cls_prob.size()
