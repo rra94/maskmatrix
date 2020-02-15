@@ -25,28 +25,29 @@ from matplotlib.patches import Polygon
 #  Visualization
 ############################################################
 
-# def display_images(images, titles=None, cols=4, cmap=None, norm=None,
-#                    interpolation=None):
-#     """Display the given set of images, optionally with titles.
-#     images: list or array of image tensors in HWC format.
-#     titles: optional. A list of titles to display with each image.
-#     cols: number of images per row
-#     cmap: Optional. Color map to use. For example, "Blues".
-#     norm: Optional. A Normalize instance to map values to colors.
-#     interpolation: Optional. Image interpolation to use for display.
-#     """
-#     titles = titles if titles is not None else [""] * len(images)
-#     rows = len(images) // cols + 1
-#     plt.figure(figsize=(14, 14 * rows // cols))
-#     i = 1
-#     for image, title in zip(images, titles):
-#         plt.subplot(rows, cols, i)
-#         plt.title(title, fontsize=9)
-#         plt.axis('off')
-#         plt.imshow(image.astype(np.uint8), cmap=cmap,
-#                    norm=norm, interpolation=interpolation)
-#         i += 1
-#     plt.show()
+def display_images(images,debug_file, image_name,titles=None, cols=4, cmap=None, norm=None,
+                   interpolation=None):
+    """Display the given set of images, optionally with titles.
+    images: list or array of image tensors in HWC format.
+    titles: optional. A list of titles to display with each image.
+    cols: number of images per row
+    cmap: Optional. Color map to use. For example, "Blues".
+    norm: Optional. A Normalize instance to map values to colors.
+    interpolation: Optional. Image interpolation to use for display.
+    """
+    titles = titles if titles is not None else [""] * len(images)
+    rows = len(images) // cols + 1
+    plt.figure(figsize=(14, 14 * rows // cols))
+    i = 1
+    for image, title in zip(images, titles):
+        plt.subplot(rows, cols, i)
+        plt.title(title, fontsize=9)
+        plt.axis('off')
+        plt.imshow(image.astype(np.uint8), cmap=cmap,
+                   norm=norm, interpolation=interpolation)
+        i += 1
+    plt.show()
+    plt.savefig(str(debug_file)+str(image_name))
 
 
 def random_colors(N, bright=True):
@@ -73,7 +74,7 @@ def apply_mask(image, mask, color, alpha=0.5):
     return image
 
 
-def display_instances(image, boxes, masks, class_ids, class_names=None,
+def display_instances(image, boxes, masks, class_ids, debug_file,image_name,class_names=None,
                       scores=None, title="",
                       figsize=(16, 16), ax=None,
                       show_mask=True, show_bbox=True,
@@ -156,7 +157,7 @@ def display_instances(image, boxes, masks, class_ids, class_names=None,
             p = Polygon(verts, facecolor="none", edgecolor=color)
             ax.add_patch(p)
     ax.imshow(masked_image.astype(np.uint8))
-    plt.savefig('/home/rragarwal4/matrixnet/sample/1.png')
+    plt.savefig(str(debug_file)+str(image_name))
 
 
 

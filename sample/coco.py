@@ -11,7 +11,7 @@ from utils import crop_image, normalize_, color_jittering_, lighting_
 from .utils import random_crop, draw_gaussian, gaussian_radius,  resize_mask
 from models.bbox_transform import crop_and_resize
 from pycocotools import mask as maskUtils
-from .visualize import display_instances
+from .visualize import display_instances, display_images
 
 from pdb import set_trace as bp
 
@@ -28,7 +28,10 @@ def minimize_mask(mask, bbox, minimask_shape):
         if m.size == 0:
             raise Exception("Invalid bounding box with area of zero")
         m = cv2.resize(m.astype(float), minimask_shape)
-        mini_mask[i:, :] = np.where(m >= 128, 1, 0)
+        print(m)
+        display_images( [m], "/home/rragarwal4/matrixnet/", str(i)+"5.jpg" )
+        mini_mask[i,:, :] = np.where(m >= 128, 1, 0)
+    
     return mini_mask
 
 
@@ -437,10 +440,14 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         
         segmentations = [maskUtils.decode(annToRLE(image.shape[:2] , rle.tolist())) for rle in segmentations]
         segmentations = np.stack(segmentations, axis=2).astype(np.bool)
-#         print(segmentations.shape, "ghdhdh")
         segmentations=segmentations.transpose((2, 0, 1))
-#         print(segmentations.shape, "ghdhdh")
-#         display_instances(image, np.array(detections), segmentations, np.array(detections[:,-1]))       
+#         display_instances(image, np.array(detections), segmentations, np.array(detections[:,-1]), "/home/rragarwal4/matrixnet/", "1.jpg")
+        display_images( [segmentations[i] for i in range(len(segmentations)) ], "/home/rragarwal4/matrixnet/", "1.jpg" )
+        segmentations_batch[b_ind][:segmentations.shape[0],:,:] = minimize_mask(segmentations, detections, minimask_shape)
+#         display_images(image,  "/home/rragarwal4/matrixnet/", "3.jpg" )
+#         display_images( [segmentations_batch[b_ind][i] for i in range(segmentations.shape[0])], "/home/rragarwal4/matrixnet/", "2.jpg" )
+#         display_images( [ i for i in segmentations_batch[b_ind][:segmentations.shape[0],:,:]], "/home/rragarwal4/matrixnet/", "2.jpg" )
+
         if not debug:
             image = image.astype(np.float32) / 255.
             if rand_color:
@@ -508,8 +515,6 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 
         if len(dets) > 0:
             detections_batch[b_ind][:len(dets),:] = np.array(dets)
-            segmentations_batch[b_ind][:segmentations.shape[0],:,:] = minimize_mask(segmentations, detections, minimask_shape)
-
         else:
             print("zero dets in image")
         
@@ -519,7 +524,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             tag_masks[olayer_idx][b_ind, :tag_len] = 1
     
 
-    images      = [torch.from_numpy(images)]
+    images= [torch.from_numpy(images)]
     anchors_heatmaps = [torch.from_numpy(anchors) for anchors in anchors_heatmaps]
     tl_corners_regrs    = [torch.from_numpy(c) for c in tl_corners_regrs]
     br_corners_regrs    = [torch.from_numpy(c) for c in br_corners_regrs]
