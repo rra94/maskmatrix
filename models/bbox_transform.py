@@ -264,7 +264,7 @@ def crop_and_resize(mask, boxes, mask_size):
     bit_masks = mask.to(dtype=torch.float32)
     rois = rois.to(device=device)
     output = torchvision.ops.roi_align(bit_masks[:, None, :, :], rois, (mask_size, mask_size)).squeeze(1)
-    print(output, "osum")
+#     print(output, "osum")
 #     print(output.size(), "SIZEEEEEEE")
     output = torch.round(output)    
     return output

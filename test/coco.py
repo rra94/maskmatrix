@@ -11,6 +11,8 @@ from utils import crop_image, normalize_
 from external.nms import soft_nms, soft_nms_merge
 from sample.visualize import display_instances
 from pycocotools import mask as maskUtils
+from PIL import Image
+from  torchvision.utils import save_image as torch_save_image
 
 def _rescale_dets(detections, ratios, borders, sizes):
     xs, ys = detections[..., 0:4:2], detections[..., 1:4:2]
@@ -46,28 +48,22 @@ def unmold_mask(bbox, mask, image_shape,flag_flip_images):
     h,w = image_shape[0:2]
     threshold = 0.5
     mask = mask.data.cpu().numpy()
-    #divide by 255
     full_masks = np.zeros((mask.shape[0],)+(h,w), dtype=bool)
     for i in range(mask.shape[0]):
         m = mask[i,:, :]
-        x2, x1, y2, y1 = int(bbox[i, 2]), int(bbox[i, 0]), int(bbox[i, 3]), int(bbox[i, 1])
+        x1, y1, x2, y2 = bbox[i][:4].astype(int)
         widths = x2-x1
         heights = y2-y1
+#         print(widths,heights)
 #         print(m)
 #         print(type(m))
-#         print(m.shape)
-        print(widths,heights)
-        m = cv2.resize(m.astype(float), (widths,heights)) 
-#         print(m.shape)
-        
-#         print(m)
-#         print(type(m))
-        print(m.shape)
-        print("-------------------")
-        m = np.where(m >= threshold, 1, 0)
-#         print("--------",full_masks.shape)
-        full_masks[i][y1:y2, x1:x2] = m
+#         print(np.sum(m))
+        m = np.array(Image.fromarray(m).resize((widths,heights)))
+        print(m)
 
+#         m = np.where(m >= threshold, 1, 0)
+        full_masks[i][y1:y2, x1:x2] = m
+#         print(np.sum(full_masks[i]))
         if flag_flip_images:
             full_masks[i] = np.fliplr(full_masks[i])
         
@@ -281,7 +277,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     if db.split != "trainval":
         db_inds = db.db_inds[:2] if debug else db.db_inds
     else:
-        db_inds = db.db_inds[:5] if debug else db.db_inds[:5]
+        db_inds = db.db_inds[:2] if debug else db.db_inds[:2]
     num_images = db_inds.size
 
     K             = db.configs["top_k"]
@@ -312,6 +308,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     
     layers_range = [[lr[0] * os[0]/input_size[0], lr[1] * os[0]/input_size[0],
                     lr[2] * os[1]/input_size[1], lr[3] * os[1]/input_size[1]] for (lr, os) in zip (layers_range, output_sizes)]
+
     
     nms_algorithm = {
         "nms": 0,
@@ -320,7 +317,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     }[db.configs["nms_algorithm"]]
     
     top_bboxes = {}
-    top_masks= {}
+    top_masks = {}
     for ind in tqdm(range(0, num_images), ncols=80, desc="locating kps"):
         db_ind = db_inds[ind]
 
@@ -330,7 +327,6 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
 
         height, width = image.shape[0:2]
         detections = [] 
-        masks = []
         for scale in scales:
             org_scale = scale
             scale = scale * max((max_dim)/float(height), (max_dim)/float(width))
@@ -373,9 +369,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 images = np.concatenate((images, images[:, :, :, ::-1]), axis=0)
             
             images = torch.from_numpy(images)
-            
-            dets,m   = decode_func(nnet, images, K, matching_threshold=matching_threshold, kernel=nms_kernel,layers_range=layers_range, output_kernel_size = output_kernel_size, output_sizes=output_sizes,input_size=input_size, base_layer_range = base_layer_range)
-            
+            dets, masks   = decode_func(nnet, images, K, matching_threshold=matching_threshold, kernel=nms_kernel,layers_range=layers_range, output_kernel_size = output_kernel_size, output_sizes=output_sizes,input_size=input_size, base_layer_range = base_layer_range)
             if flag_flip_images:
                 dets   = dets.reshape(2, -1, 8)
                 dets[1, :, [0, 2]] = out_width - dets[1, :, [2, 0]]
@@ -384,42 +378,47 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             _rescale_dets(dets, ratios, borders, sizes)
             dets[:, :, 0:4] /= scale
             detections.append(dets)
-            m = m.squeeze(0)
-            masks.append(m)
-        
+
         detections = np.concatenate(detections, axis=1)
-#         print(detections.shape)
-#         masks = torch.cat(m, dim =0)
-        
+
         classes    = detections[..., -1]
         classes    = classes[0]
         detections = detections[0]
-        masks  = masks[0]
+#         print(masks.shape)
+        masks = masks.squeeze(0)
+#         print(masks.shape)
         
-#         print(detections.shape, masks.shape)
+
+        
         # reject detections with negative scores
         keep_inds  = (detections[:, 4] > 0)
         detections = detections[keep_inds]
         classes    = classes[keep_inds]
-        masks = masks[keep_inds, :,:,:]
+        masks = masks[keep_inds]
         
+        ms= masks.new(masks.shape[0], 28,28).zero_()
+        
+        for i in range(masks.shape[0]):
+            ms[i] = masks[i][:,:,int(classes[i])]
+            ms[i] = torch.round(ms[i])
+
+
         top_bboxes[image_id] = {}
-        
         top_masks[image_id] = {}
-        
         for j in range(categories):
             keep_inds = (classes == j)
             top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:7].astype(np.float32)
-            top_masks[image_id][j+1] = masks[keep_inds][:, :,:]
-            
-#             if  merge_bbox:
-#                 soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
-#             else:
-#                 soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
+            top_masks[image_id][j + 1] = ms[keep_inds][:,:,:]
+#             print(top_masks[image_id][j + 1].shape)
+            if  merge_bbox:
+                soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
+            else:
+                soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
             top_bboxes[image_id][j + 1] = top_bboxes[image_id][j + 1][:, 0:5]
-#             top_masks[image_id][j+1] = masks[keep_inds][:, :].astype(np.bool)
-
-       
+                
+        
+#             torch_save_image(ms.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_test.jpg",1)
+        
         scores = np.hstack([
             top_bboxes[image_id][j][:, -1] 
             for j in range(1, categories + 1)
@@ -430,92 +429,74 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             for j in range(1, categories + 1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] >= thresh)
                 top_bboxes[image_id][j] = top_bboxes[image_id][j][keep_inds]
-                top_masks[image_id][j] = top_masks[image_id][j][keep_inds][:,:,:,j-1]
-#                 print(top_masks[image_id][j].shape)
-
-        
-        
+                top_masks[image_id][j] = top_masks[image_id][j][keep_inds]
+                
+                                   
         if debug:
             image_file = db.image_file(db_ind)
             image      = cv2.imread(image_file)
-            bboxes = []
-            unmoulded_masks=[]
-            cats =[]
-            for j in range(categories ,0 , -1):
+
+            for j in range(categories, 0, -1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] > 0.3)
-                tb= top_bboxes[image_id][j][keep_inds]
-#                 print(tb.shape)
-                if tb.any():
-                    bboxes.append(tb)
-#                     print(tb)
-                    tm = top_masks[image_id][j][keep_inds]      
-                    tm = unmold_mask( tb,tm, image.shape, flag_flip_images)
-#                     print([maskUtils.encode(np.asfortranarray(tm[i])) for i in range(tm.shape[0])])
-                    unmoulded_masks.append(tm)
-                    cats.append(np.array([j+1]*tb.shape[0]))
-                    
-    
-#             print(np.vstack(unmoulded_masks).shape )
-            unmoulded_masks = np.vstack(unmoulded_masks).astype(np.bool)
-            unmoulded_masks =unmoulded_masks.transpose((1, 2, 0))
-#             print(image.shape, unmoulded_masks.shape , np.concatenate(cats).shape)
-            display_instances(image, np.concatenate(bboxes), unmoulded_masks, np.concatenate(cats), "/home/rragarwal4/matrixnet/results/",image_file[-10:] )
-            
-#         if debug:
-#             image_file = db.image_file(db_ind)
-#             image      = cv2.imread(image_file)
-#             bboxes = {}
-#             for j in range(categories, 0, -1):
-#                 keep_inds = (top_bboxes[image_id][j][:, -1] > 0.3)
-#                 cat_name  = db.class_name(j)
-#                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-#                 color     = np.random.random((3, )) * 0.6 + 0.4
-#                 color     = color * 255
-#                 color     = color.astype(np.int32).tolist()
-#                 for bbox in top_bboxes[image_id][j][keep_inds]:
+                cat_name  = db.class_name(j)
+                cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+                color     = np.random.random((3, )) * 0.6 + 0.4
+                color     = color * 255
+                color     = color.astype(np.int32).tolist()
+                fbboxes = top_bboxes[image_id][j][keep_inds]
+                fmasks = top_masks[image_id][j][keep_inds]
+#                 print(image.shape)
+#                 torch_save_image(torch.from_numpy(image.transpose((2, 0, 1))).float(),  "/home/rragarwal4/matrixnet/imgs/target_img.jpg",1)
+#                 if fmasks.shape[0]>0:
+#                     torch_save_image(fmasks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_unmoulded.jpg",1)
+#                 fmasks = unmold_mask(fbboxes, fmasks,image.shape[:2],flag_flip_images  )
+#                 print(fmasks.shape)
+#                 if fmasks.shape[0]>0:
+#                     torch_save_image(torch.from_numpy(fmasks).float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_moulded.jpg",1)
+                for bbox in top_bboxes[image_id][j][keep_inds]:
 # #                     print(bbox)
-#                     bbox  = bbox[0:4].astype(np.int32)
-#                     if bbox[1] - cat_size[1] - 2 < 0:
-#                         cv2.rectangle(image,
-#                             (bbox[0], bbox[1] + 2),
-#                             (bbox[0] + cat_size[0], bbox[1] + cat_size[1] + 2),
-#                             color, -1
-#                         )
-#                         cv2.putText(image, cat_name, 
-#                             (bbox[0], bbox[1] + cat_size[1] + 2), 
-#                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), thickness=1
-#                         )
-#                     else:
-#                         cv2.rectangle(image,
-#                             (bbox[0], bbox[1] - cat_size[1] - 2),
-#                             (bbox[0] + cat_size[0], bbox[1] - 2),
-#                             color, -1
-#                         )
-#                         cv2.putText(image, cat_name, 
-#                             (bbox[0], bbox[1] - 2), 
-#                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), thickness=1
-#                         )
-#                     cv2.rectangle(image,
-#                         (bbox[0], bbox[1]),
-#                         (bbox[2], bbox[3]),
-#                         color, 2
-#                     )
-#             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
-#             #print(debug_file)
-#             cv2.imwrite(debug_file,image)
+                    bbox  = bbox[0:4].astype(np.int32)
+                    if bbox[1] - cat_size[1] - 2 < 0:
+                        cv2.rectangle(image,
+                            (bbox[0], bbox[1] + 2),
+                            (bbox[0] + cat_size[0], bbox[1] + cat_size[1] + 2),
+                            color, -1
+                        )
+                        cv2.putText(image, cat_name, 
+                            (bbox[0], bbox[1] + cat_size[1] + 2), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), thickness=1
+                        )
+                    else:
+                        cv2.rectangle(image,
+                            (bbox[0], bbox[1] - cat_size[1] - 2),
+                            (bbox[0] + cat_size[0], bbox[1] - 2),
+                            color, -1
+                        )
+                        cv2.putText(image, cat_name, 
+                            (bbox[0], bbox[1] - 2), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), thickness=1
+                        )
+                    cv2.rectangle(image,
+                        (bbox[0], bbox[1]),
+                        (bbox[2], bbox[3]),
+                        color, 2
+                    )
+                    
+            debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
+            #print(debug_file)
+            cv2.imwrite(debug_file,image)
 
-#     result_json = os.path.join(result_dir, "results.json")
+    result_json = os.path.join(result_dir, "results.json")
 
-#     detections  = db.convert_to_coco(top_bboxes)
-#     with open(result_json, "w") as f:
-#         json.dump(detections, f)
-#     #result_json="home/rragarwal4/new/keras-retinanet/val2017_bbox_results.json"
-#     print(result_json)
-#     cls_ids   = list(range(1, categories + 1))
-#     image_ids = [db.image_ids(ind) for ind in db_inds]
-#     db.evaluate(result_json, cls_ids, image_ids)
+    detections  = db.convert_to_coco(top_bboxes)
+    with open(result_json, "w") as f:
+        json.dump(detections, f)
+    #result_json="home/rragarwal4/new/keras-retinanet/val2017_bbox_results.json"
+    print(result_json)
+    cls_ids   = list(range(1, categories + 1))
+    image_ids = [db.image_ids(ind) for ind in db_inds]
+    db.evaluate(result_json, cls_ids, image_ids)
     return 0
-
 
     
 

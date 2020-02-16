@@ -15,7 +15,6 @@ import time
 import cv2
 from sample.visualize import display_instances, display_images
 from  torchvision.utils import save_image
-from torchvision.ops import nms
 
 class SubNet(nn.Module):
 
@@ -152,7 +151,7 @@ class model(nn.Module):
         self.MASK_SIZE = 28
         linearfiltersize = self.nchannels * (self.POOLING_SIZE-1)*(self.POOLING_SIZE-1)
         self.rpn = MatrixNetAnchors(self.classes, resnet, layers)
-        self._decode_bbox = _decode_bbox
+        self._decode = _decode
         self.proposals_generators = ProposalGenerator(db)
         self.proposal_target_layer = _ProposalTargetLayer(self.classes) #80 or 81
         self.RCNN_roi_align = RoIAlignMatrixNet(self.POOLING_SIZE, self.POOLING_SIZE)
@@ -249,6 +248,11 @@ class model(nn.Module):
 #         print(target_mask.shape, "target_mask")
         target_mask = _gather_feat(target_mask, inds)
         
+# 
+        
+#         print(torch.sum(target_mask[0]))
+#         save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
+
         pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         pooled_feat = self.RCNN_head(pooled_feat)
         bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
@@ -293,8 +297,9 @@ class model(nn.Module):
         cls_prob = F.softmax(cls_score, dim = 1)
         cls_score = cls_score.view(batch_size, nroi, -1)
         cls_prob = cls_prob.view(batch_size, nroi, -1)
-        bboxes_decoded = self._decode_bbox(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
         
+        bboxes_decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
+#         print(bboxes_decoded[0][1:100][1:5], "ddddd")
         batch_size, prenms_nroi, _ = bboxes_decoded.shape
         bboxes_for_masks=bboxes_decoded.new(batch_size, prenms_nroi, 7).zero_()
 #         print(bboxes_decoded[0:,1:4,:])
@@ -304,25 +309,31 @@ class model(nn.Module):
         bboxes_for_masks[:,:,5:6] = bboxes_decoded[:,:,7:8] #classes
         bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer
         
-#         print("-----",bboxes_for_masks[0:,1:4,:])
-        bboxes_for_masks_post_nms = bboxes_for_masks.new(batch_size, 500, 7 ).zero_()
-        bboxes_decoded_post_nms = bboxes_decoded.new(batch_size, 500, 8 ).zeros_()
+#         print("-----",bboxes_for_masks[0][1:100])
+#         bboxes_for_masks_post_nms = bboxes_for_masks.new(batch_size, 100, 7 ).zero_()
+        
+#         bboxes_decoded_post_nms = bboxes_decoded.new(batch_size, 100, 8 ).zeros_()
 
-        for b_ind in batch_size:
-            keeps = ops.nms(bboxes_for_masks[bind][:,1:5], bboxes_for_masks[b_ind][:,5], iou_threshold=0.5)
-            keeps = keeps[:500]
-            bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
-            bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
+#         for b_ind in batch_size:
+#             keeps = ops.nms(bboxes_for_masks[bind][:,1:5], bboxes_for_masks[b_ind][:,5], iou_threshold=0.5)
+#             keeps = keeps[:100]
+#             bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
+#             bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
             
+       
             
-        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
-#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
+#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
+        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
         
         pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
-        masks_preds = self.RCNN_mask(pooled_masks)       
-        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )        
+        masks_preds = self.RCNN_mask(pooled_masks)
+        
+        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )      
+#         mask_preds = mask_preds[:,:,:,bboxes_decoded_post_nms[:,:,5]]
+#         masks_preds = masks_preds[:,:,:,bboxes_for_masks[:,:,5].long()]
+        
 #         print(bboxes_for_masks.shape)
-        return bboxes_decoded_post_nms, masks_preds
+        return bboxes_decoded, masks_preds
     
     def forward(self, *xs, **kwargs):
         if len(xs) > 1:
@@ -487,7 +498,7 @@ class RoIAlignMatrixNet(nn.Module):
             else:
                 rois_cords[:,i] *= height_scale
         return rois_cords
-        
+          
 class ProposalGenerator(nn.Module):
     def __init__ (self, db):
         super(ProposalGenerator, self).__init__() 
@@ -547,8 +558,7 @@ class ProposalGenerator(nn.Module):
     def  backward(self,top,propagate_down,bottom):
         pass
 
-
-def _decode_bbox(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score, cls_prob, 
+def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score, cls_prob, 
    K=2000, kernel=1,layers_range = None,dist_threshold=0.2,
         output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
         ):
@@ -588,7 +598,6 @@ def _decode_bbox(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_r
         dets = torch.gather(dets, 1, inds)
         dets[:,:,0] =  torch.sqrt(topk_scores[:,:] * dets[:,:,0])
         dets[:,:,5] = topk_clses
-        #2nd last is layer
         dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,6:7], dets[:,:,5:6]], dim =2)
         return dets_return
-    
+
