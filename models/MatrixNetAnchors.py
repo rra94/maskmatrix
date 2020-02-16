@@ -13,6 +13,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import cv2
+from sample.visualize import display_instances, display_images
+from  torchvision.utils import save_image
+from torchvision.ops import nms
 
 class SubNet(nn.Module):
 
@@ -177,6 +180,21 @@ class model(nn.Module):
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
         rois, rois_label, bbox_targets_tl, bbox_targets_br , bbox_inside_weights, bbox_outside_weights , target_mask =self.proposal_target_layer(rois, gt_rois, gt_masks, ratios)
         
+#         print(gt_masks[0].unsqueeze(1).shape)
+        
+#         x = gt_masks[0][:10].float()
+#         save_image(x.unsqueeze(1), "/home/rragarwal4/matrixnet/imgs/gt.jpg",5)
+        
+#         print(torch.sum(target_mask[0]))
+#         save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
+
+#         g = gt_masks[0].data.cpu().numpy()
+#         t = target_mask[0].data.cpu().numpy()
+# #         print(g)
+        
+#         display_images( [g[i].astype(int) for i in range(200)], "/home/rragarwal4/matrixnet/imgs/", str(time.time())+"gt.jpg" )
+#         display_images( [t[i].astype(int) for i in range(200)], "/home/rragarwal4/matrixnet/imgs/", str(time.time())+"target.jpg" )
+
         
 #         fimage = image[0] * 255
 #         fimage = fimage.clone().cpu().detach().numpy()
@@ -287,30 +305,24 @@ class model(nn.Module):
         bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer
         
 #         print("-----",bboxes_for_masks[0:,1:4,:])
-#         bboxes_for_masks_post_nms = bboxes_for_masks.new(batch_size, 100, 7 ).zero_()
-        
-#         bboxes_decoded_post_nms = bboxes_decoded.new(batch_size, 100, 8 ).zeros_()
+        bboxes_for_masks_post_nms = bboxes_for_masks.new(batch_size, 500, 7 ).zero_()
+        bboxes_decoded_post_nms = bboxes_decoded.new(batch_size, 500, 8 ).zeros_()
 
-#         for b_ind in batch_size:
-#             keeps = ops.nms(bboxes_for_masks[bind][:,1:5], bboxes_for_masks[b_ind][:,5], iou_threshold=0.5)
-#             keeps = keeps[:100]
-#             bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
-#             bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
+        for b_ind in batch_size:
+            keeps = ops.nms(bboxes_for_masks[bind][:,1:5], bboxes_for_masks[b_ind][:,5], iou_threshold=0.5)
+            keeps = keeps[:500]
+            bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
+            bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
             
-       
             
-#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
-        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
+        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
+#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
         
         pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
-        masks_preds = self.RCNN_mask(pooled_masks)
-        
-        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )      
-#         mask_preds = mask_preds[:,:,:,bboxes_decoded_post_nms[:,:,5]]
-#         masks_preds = masks_preds[:,:,:,bboxes_for_masks[:,:,5].long()]
-        
+        masks_preds = self.RCNN_mask(pooled_masks)       
+        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )        
 #         print(bboxes_for_masks.shape)
-        return bboxes_decoded, masks_preds
+        return bboxes_decoded_post_nms, masks_preds
     
     def forward(self, *xs, **kwargs):
         if len(xs) > 1:

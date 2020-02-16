@@ -96,7 +96,7 @@ class _ProposalTargetLayer(nn.Module):
                 ind = inds[i]
                 bbox_targets_tl[b, ind, :] = bbox_target_tl_data[b, ind, :]
                 bbox_targets_br[b, ind, :] = bbox_target_br_data[b, ind, :]
-                target_mask_batch[b, ind, :] = target_mask_batch[b, ind, :] 
+                target_mask_batch[b, ind, :] = target_mask_batch_data[b, ind, :] 
    
                 bbox_inside_weights[b, ind, :] = self.BBOX_INSIDE_WEIGHTS
 
@@ -221,11 +221,12 @@ class _ProposalTargetLayer(nn.Module):
             #normalise bbox cords
             norm_boxes = rois_batch[i].clone().detach()
             norm_gt = gt_rois_batch[i].clone().detach()
-            norm_boxes =norm_boxes - norm_gt
+            norm_boxes[:,0:2] -= norm_gt[:,0:2]
+            norm_boxes[:,2:4] -= norm_gt[:,0:2]
             
             dh = norm_gt[:,2:3]-norm_gt[:, 0:1]
             dw = norm_gt[:,3:4]-norm_gt[:, 1:2]
-            norm_boxes = torch.cat([norm_boxes[:, 0:1]/dh,norm_boxes[:, 1:2]/dw ,norm_boxes[:, 2:3]/dh,norm_boxes[:, 3:4]/dw ] ,dim=1).clone().detach()
+            norm_boxes = torch.cat([self.mask_shape*norm_boxes[:, 0:1]/dh,self.mask_shape*norm_boxes[:, 1:2]/dw ,self.mask_shape*norm_boxes[:, 2:3]/dh,self.mask_shape*norm_boxes[:, 3:4]/dw ] ,dim=1).clone().detach()
 #             print(norm_boxes.shape, ("NORMBOXES"))
             masks = crop_and_resize(roi_masks, norm_boxes, self.mask_shape).clone().detach()
 #             masks = torch.round(masks).clone().detach()
