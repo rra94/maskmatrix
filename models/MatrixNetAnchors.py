@@ -431,9 +431,9 @@ class MatrixNetAnchorsLoss(nn.Module):
 #         if target_class_ids.size():
             # Only positive ROIs contribute to the loss. And only
             # the class specific mask of each ROI.
-        batch_size , nrois, h,w,nclasses = pred_masks.shape
+        batch_size , nrois, nclasses, h, w = pred_masks.shape
         target_masks = target_masks.view(batch_size*nrois,h,w )
-        pred_masks = pred_masks. view(batch_size*nrois*nclasses, h,w  )
+        pred_masks = pred_masks. view(batch_size*nrois,nclasses, h,w  )
         if target_class_ids.size():
                 positive_ix = torch.nonzero(target_class_ids > 0).view(-1)
                 positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)-1
@@ -447,8 +447,8 @@ class MatrixNetAnchorsLoss(nn.Module):
                 y_onhot = torch.floatTensor(batch_size, nclasses).astype(positive_class_ids)
                 y_onehot.zero_()
                 y_onehot.scatter_(1, positive_class_ids, 1)
-                y_onehot=y_onehot.view(batch_si-1)
-                y_pred_final = target_masks[y_onehot,:,:]
+                y_onehot=y_onehot.view(batch_size,-1)
+                y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
                # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
          
                 #indices = positive_class_ids.unsqueeze(1).unsqueeze(1).unsqueeze(1).expand_as(y_pred).long()
