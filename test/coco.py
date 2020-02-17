@@ -374,13 +374,13 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 dets   = dets.reshape(2, -1, 8)
                 dets[1, :, [0, 2]] = out_width - dets[1, :, [2, 0]]
                 dets   = dets.reshape(1, -1, 8)
-            
+#             print(dets)
             _rescale_dets(dets, ratios, borders, sizes)
             dets[:, :, 0:4] /= scale
             detections.append(dets)
-
+    
         detections = np.concatenate(detections, axis=1)
-
+       
         classes    = detections[..., -1]
         classes    = classes[0]
         detections = detections[0]
@@ -402,12 +402,11 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             ms[i] = masks[i][int(classes[i]),:,:]
             ms[i] = torch.round(ms[i])
 
-
         top_bboxes[image_id] = {}
         top_masks[image_id] = {}
         for j in range(categories):
             keep_inds = (classes == j)
-            top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:7].astype(np.float32)
+            top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:6].astype(np.float32)
             top_masks[image_id][j + 1] = ms[keep_inds][:,:,:]
 #             print(top_masks[image_id][j + 1].shape)
 #             if  merge_bbox:
@@ -430,6 +429,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 keep_inds = (top_bboxes[image_id][j][:, -1] >= thresh)
                 top_bboxes[image_id][j] = top_bboxes[image_id][j][keep_inds]
                 top_masks[image_id][j] = top_masks[image_id][j][keep_inds]
+                
                                    
         if debug:
             image_file = db.image_file(db_ind)
@@ -438,12 +438,14 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             fbboxes =[]
             for j in range(categories, 0, -1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] > 0.3)
+#                     print(keep_inds)
                 cat_name  = db.class_name(j)
                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
                 color     = np.random.random((3, )) * 0.6 + 0.4
                 color     = color * 255
                 color     = color.astype(np.int32).tolist()
                 fb = top_bboxes[image_id][j][keep_inds]
+                
                 if fb.shape[0]>0:
                     print(fb.shape)
                     c = np.array([[j-1]*fb.shape[0]]).T
@@ -490,7 +492,9 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                         (bbox[2], bbox[3]),
                         color, 2
                     )
+                    
             fmasks = [torch.from_numpy(fm) for fm in fmasks]
+#             print([f.shape for f in  fmasks])
             fmasks = torch.cat(fmasks, dim =0 )
 #             print(fmasks.shape)
             fbboxes = np.vstack(fbboxes)

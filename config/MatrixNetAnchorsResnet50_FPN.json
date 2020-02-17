@@ -26,8 +26,8 @@
     },
 
     "db": {
-        "rand_scale_min": 0.6,
-        "rand_scale_max": 1.4,
+        "rand_scale_min": 1.0,
+        "rand_scale_max": 1.1,
         "rand_scale_step": 0.1,
         "rand_scales": null,
 	"num_dets":2000,
@@ -41,7 +41,7 @@
         "input_size": [640, 640],
    
        "output_kernel_size": 1 ,
-       "base_layer_range":[24,48,24,48],
+       "base_layer_range":[32,64,32,64],
        "layers_range": [[[0,48,0,48],-1,-1, -1, -1],
                  [-1,[48,96,48,96],-1,-1, -1],
                  [-1,-1,[96,192,96,192],-1, -1],

@@ -409,7 +409,7 @@ class MatrixNetAnchorsLoss(nn.Module):
         rois_label = rois_label.flatten().long()
         RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label)
         mrcnn_mask_loss = self._compute_mrcnn_mask_loss(target_mask, rois_label, masks_preds)
-        print(mrcnn_mask_loss)
+#         print(RCNN_loss_bbox)
         loss = focal_loss + corner_regr_loss + RCNN_loss_bbox +  RCNN_loss_cls + mrcnn_mask_loss
         return loss.unsqueeze(0)
     
@@ -454,6 +454,7 @@ class MatrixNetAnchorsLoss(nn.Module):
                 y_onehot.scatter_(1, positive_class_ids.view(-1,1), 1)
                 y_onehot=torch.nonzero(y_onehot.view(-1))
                 y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
+                y_pred_final = y_pred_final.squeeze(1)
                 #print(y_pred_final.shape, y_true.shape)
                # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
          
