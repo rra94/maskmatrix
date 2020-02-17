@@ -399,7 +399,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         ms= masks.new(masks.shape[0], 28,28).zero_()
         
         for i in range(masks.shape[0]):
-            ms[i] = masks[i][:,:,int(classes[i])]
+            ms[i] = masks[i][int(classes[i]),:,:]
             ms[i] = torch.round(ms[i])
 
 

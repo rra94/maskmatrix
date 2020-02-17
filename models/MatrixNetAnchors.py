@@ -342,12 +342,15 @@ class model(nn.Module):
         
         pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
-        
-        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )      
+        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
+
+#         masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )      
 #         mask_preds = mask_preds[:,:,:,bboxes_decoded_post_nms[:,:,5]]
 #         masks_preds = masks_preds[:,:,:,bboxes_for_masks[:,:,5].long()]
         
-#         print(bboxes_for_masks.shape)
+#         print(bboxes_for_masks.shape)\\
+
+
         return bboxes_decoded, masks_preds
     
     def forward(self, *xs, **kwargs):
@@ -444,11 +447,14 @@ class MatrixNetAnchorsLoss(nn.Module):
                 y_true = target_masks[positive_ix,:,:]
 #                 print(y_true.type())
                 y_pred = pred_masks[positive_ix,:,:,:]
-                y_onhot = torch.floatTensor(batch_size, nclasses).astype(positive_class_ids)
+                y_onehot = torch.FloatTensor(positive_class_ids.shape[0], nclasses).type_as(positive_class_ids)
                 y_onehot.zero_()
-                y_onehot.scatter_(1, positive_class_ids, 1)
-                y_onehot=y_onehot.view(-1)
+                #print(y_onehot.shape, positive_class_ids.shape)
+
+                y_onehot.scatter_(1, positive_class_ids.view(-1,1), 1)
+                y_onehot=torch.nonzero(y_onehot.view(-1))
                 y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
+                #print(y_pred_final.shape, y_true.shape)
                # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
          
                 #indices = positive_class_ids.unsqueeze(1).unsqueeze(1).unsqueeze(1).expand_as(y_pred).long()
@@ -458,9 +464,9 @@ class MatrixNetAnchorsLoss(nn.Module):
         #         y_pred = torch.index_select(y_pred, )
         #         print(y_pred.shape)
 
-                loss = F.binary_cross_entropy(y_pred, y_true)
+                loss = F.binary_cross_entropy(y_pred_final, y_true)
         else:
-            loss = torch.FloatTensor([0]).astype(pred_masks).detach()
+            loss = torch.FloatTensor([0]).type_as(pred_masks).detach()
             
         return loss
     
