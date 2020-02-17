@@ -264,7 +264,7 @@ class model(nn.Module):
         pooled_masks = pooled_masks.view(batch_size*nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
         
-        masks_preds = masks_preds.view(batch_size, nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )
+        #masks_preds = masks_preds.view(batch_size, nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )
         
         mp = masks_preds[0].clone().detach()
 #         print(mp.shape)
@@ -433,11 +433,10 @@ class MatrixNetAnchorsLoss(nn.Module):
             # the class specific mask of each ROI.
         batch_size , nrois, h,w,nclasses = pred_masks.shape
         target_masks = target_masks.view(batch_size*nrois,h,w )
-        pred_masks = pred_masks. view(batch_size*nrois,h,w ,nclasses )
+        pred_masks = pred_masks. view(batch_size*nrois*nclasses, h,w  )
         if target_class_ids.size():
                 positive_ix = torch.nonzero(target_class_ids > 0).view(-1)
-                target_class_ids = target_class_ids -1
-                positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)
+                positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)-1
 #                 print(positive_class_ids.shape)
         #         indices = torch.stack((positive_ix, positive_class_ids), dim=1)
 
@@ -445,18 +444,23 @@ class MatrixNetAnchorsLoss(nn.Module):
                 y_true = target_masks[positive_ix,:,:]
 #                 print(y_true.type())
                 y_pred = pred_masks[positive_ix,:,:,:]
-                y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
+                y_onhot = torch.floatTensor(batch_size, nclasses).astype(positive_class_ids)
+                y_onehot.zero_()
+                y_onehot.scatter_(1, positive_class_ids, 1)
+                y_onehot=y_onehot.view(batch_si-1)
+                y_pred_final = target_masks[y_onehot,:,:]
+               # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
          
-                indices = positive_class_ids.unsqueeze(1).unsqueeze(1).unsqueeze(1).expand_as(y_pred).long()
-                print(indices.shape)
-                y_pred_final= torch.gather(y_pred, 3, indices)
-                print("---------",y_pred_final.shape)
+                #indices = positive_class_ids.unsqueeze(1).unsqueeze(1).unsqueeze(1).expand_as(y_pred).long()
+                #print(indices.shape)
+                #y_pred_final= torch.gather(y_pred, 3, indices)
+               # print("---------",y_pred_final.shape)
         #         y_pred = torch.index_select(y_pred, )
         #         print(y_pred.shape)
 
-                loss = 0#F.binary_cross_entropy(y_pred, y_true)
+                loss = F.binary_cross_entropy(y_pred, y_true)
         else:
-            loss = 0
+            loss = torch.FloatTensor([0]).astype(pred_masks).detach()
             
         return loss
     
