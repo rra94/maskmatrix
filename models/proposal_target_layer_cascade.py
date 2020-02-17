@@ -8,7 +8,7 @@ from __future__ import absolute_import
 # --------------------------------------------------------
 # Reorganized and modified by Jianwei Yang and Jiasen Lu
 # --------------------------------------------------------
-
+import time
 import torch
 import torch.nn as nn
 import numpy as np
@@ -16,6 +16,7 @@ import numpy.random as npr
 #from ..utils.config import cfg
 from .bbox_transform import bbox_overlaps_batch, bbox_transform_batch, crop_and_resize
 import pdb
+from  torchvision.utils import save_image
 
 class _ProposalTargetLayer(nn.Module):
     """
@@ -133,8 +134,9 @@ class _ProposalTargetLayer(nn.Module):
         overlaps = bbox_overlaps_batch(all_rois, gt_boxes)
         #print(torch.sum(overlaps==-1))
         max_overlaps, gt_assignment = torch.max(overlaps, 2)
-        #int(max_overlaps
+#         print(max_overlaps)
         batch_size = overlaps.size(0)
+        
         num_proposal = overlaps.size(1)
         num_boxes_per_img = overlaps.size(2)
 
@@ -153,7 +155,11 @@ class _ProposalTargetLayer(nn.Module):
         # foreground RoIs
         for i in range(batch_size):
             fg_inds = torch.nonzero(max_overlaps[i] >= self.FG_THRESH).view(-1)
-            #print(fg_inds.size())
+#             print(overlaps[i][fg_inds][:, 10:20])
+#             print(gt_boxes[i][0:20,:])
+#             print(max_overlaps[i][fg_inds], gt_assignment[i][fg_inds])
+#             print(all_rois[i][fg_inds])
+#             print(all_rois[i][fg_inds])
             fg_num_rois = fg_inds.numel()
 
             # Select background RoIs as those within [BG_THRESH_LO, BG_THRESH_HI)
@@ -205,7 +211,11 @@ class _ProposalTargetLayer(nn.Module):
 
             # The indices that we're selecting (both fg and bg)
             keep_inds = torch.cat([fg_inds, bg_inds], 0)
-
+#             print(all_rois[i][fg_inds])
+#             print(gt_assignment[i][fg_inds])
+#             print( gt_masks[i][gt_assignment[i][fg_inds]])
+#             save_image(gt_masks[i][gt_assignment[i][fg_inds]].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_beforecrop.jpg",32)
+            
             # Select sampled values from various arrays:
             labels_batch[i].copy_(labels[i][keep_inds])
 
@@ -216,22 +226,42 @@ class _ProposalTargetLayer(nn.Module):
             rois_batch[i] = all_rois[i][keep_inds]
             
             gt_rois_batch[i] = gt_boxes[i][gt_assignment[i][keep_inds]]
+#             print(gt_assignment[i])
+#             print("---")
+#             print(gt_assignment[i][keep_inds])
             
             roi_masks = gt_masks[i][gt_assignment[i][keep_inds]]
+#             save_image(roi_masks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_beforecrop.jpg",32)
+#             time.sleep(60)
             #normalise bbox cords
+            
+            
             norm_boxes = rois_batch[i].clone().detach()
             norm_gt = gt_rois_batch[i].clone().detach()
             norm_boxes[:,0:2] -= norm_gt[:,0:2]
             norm_boxes[:,2:4] -= norm_gt[:,0:2]
-            
             dh = norm_gt[:,2:3]-norm_gt[:, 0:1]
             dw = norm_gt[:,3:4]-norm_gt[:, 1:2]
-            norm_boxes = torch.cat([self.mask_shape*norm_boxes[:, 0:1]/dh,self.mask_shape*norm_boxes[:, 1:2]/dw ,self.mask_shape*norm_boxes[:, 2:3]/dh,self.mask_shape*norm_boxes[:, 3:4]/dw ] ,dim=1).clone().detach()
+            
+           
+            norm_boxes = torch.cat([56*norm_boxes[:, 0:1]/dh,56*norm_boxes[:, 1:2]/dw ,56*norm_boxes[:, 2:3]/dh,56*norm_boxes[:, 3:4]/dw ] ,dim=1).clone().detach()
 #             print(norm_boxes.shape, ("NORMBOXES"))
             masks = crop_and_resize(roi_masks, norm_boxes, self.mask_shape).clone().detach()
+#             print(fg_inds)
+#             print(rois_batch[i][1:5])
+#             print(gt_rois_batch[i][1:5])
+#             print(norm_boxes[1:5])
+             
+#             print("-----", norm_boxes[bg_inds])
+        
 #             masks = torch.round(masks).clone().detach()
 #             print(masks.shape, ("NORMBOXES"))
+#             save_image(masks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_aftercrop.jpg",32)
             target_mask_batch[i] = masks
+        
+        
+        
+#             time.sleep(60)
             
             
         #print(rois_batch)

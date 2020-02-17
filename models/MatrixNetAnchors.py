@@ -181,7 +181,7 @@ class model(nn.Module):
         
 #         print(gt_masks[0].unsqueeze(1).shape)
         
-#         x = gt_masks[0][:10].float()
+#         x = gt_masks[0].float()
 #         save_image(x.unsqueeze(1), "/home/rragarwal4/matrixnet/imgs/gt.jpg",5)
         
 #         print(torch.sum(target_mask[0]))
@@ -267,11 +267,7 @@ class model(nn.Module):
         masks_preds = masks_preds.view(batch_size, nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
         
       
-#         print(mp.shape)
-        
-        
-       
-#         print(r.shape)
+
         
 #         mp = mp.gather
 #         print(torch.sum(mp[0]))
@@ -301,7 +297,7 @@ class model(nn.Module):
         _, inds = torch.topk(rois[:,:, 6], rois.size(1))
         rois = _gather_feat(rois, inds)
         
-        _, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
+        pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         
         pooled_feat = self.RCNN_head(pooled_feat)
         bbox_pred_tl = self.RCNN_bbox_pred_tl(pooled_feat)
@@ -316,8 +312,10 @@ class model(nn.Module):
         bboxes_decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
 #         print(bboxes_decoded[0][1:100][1:5], "ddddd")
         batch_size, prenms_nroi, _ = bboxes_decoded.shape
+
+    
         bboxes_for_masks=bboxes_decoded.new(batch_size, prenms_nroi, 7).zero_()
-#         print(bboxes_decoded[0:,1:4,:])
+# #         print(bboxes_decoded[0:,1:4,:])
         
         bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,4:5] #score
         bboxes_for_masks[:,:,1:5] = bboxes_decoded[:,:,0:4]*8 #bbox cords
@@ -335,10 +333,10 @@ class model(nn.Module):
 #             bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
 #             bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
             
-       
+        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features, bboxes_for_masks)       
             
 #         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
-        pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
+#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
         
         pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
@@ -455,6 +453,7 @@ class MatrixNetAnchorsLoss(nn.Module):
                 y_onehot=torch.nonzero(y_onehot.view(-1))
                 y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
                 y_pred_final = y_pred_final.squeeze(1)
+#                 save_image(y_true.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_loss.jpg",32)
                 #print(y_pred_final.shape, y_true.shape)
                # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
          
@@ -466,6 +465,7 @@ class MatrixNetAnchorsLoss(nn.Module):
         #         print(y_pred.shape)
 
                 loss = F.binary_cross_entropy(y_pred_final, y_true)
+#                 time.sleep(60)
         else:
             loss = torch.FloatTensor([0]).type_as(pred_masks).detach()
             

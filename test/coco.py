@@ -329,7 +329,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         detections = [] 
         for scale in scales:
             org_scale = scale
-            scale = scale * max((max_dim)/float(height), (max_dim)/float(width))
+            scale = scale * min((max_dim)/float(height), (max_dim)/float(width))
             new_height = int(height * scale)
             new_width  = int(width * scale)
             new_center = np.array([new_height // 2, new_width // 2])
@@ -437,7 +437,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             fmasks=[]
             fbboxes =[]
             for j in range(categories, 0, -1):
-                keep_inds = (top_bboxes[image_id][j][:, -1] > 0.3)
+                keep_inds = (top_bboxes[image_id][j][:, -1] > 0.5)
 #                     print(keep_inds)
                 cat_name  = db.class_name(j)
                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
@@ -447,7 +447,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 fb = top_bboxes[image_id][j][keep_inds]
                 
                 if fb.shape[0]>0:
-                    print(fb.shape)
+#                     print(fb.shape)
                     c = np.array([[j-1]*fb.shape[0]]).T
 #                     print(c.shape)
                     fb = np.concatenate((top_bboxes[image_id][j][keep_inds], c ), axis = 1)
@@ -495,16 +495,19 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                     
             fmasks = [torch.from_numpy(fm) for fm in fmasks]
 #             print([f.shape for f in  fmasks])
-            fmasks = torch.cat(fmasks, dim =0 )
-#             print(fmasks.shape)
-            fbboxes = np.vstack(fbboxes)
-            fbboxes= np.concatenate((fbboxes[:,0:4] ,fbboxes[:,4:5]), axis = 1)
-#             print(fbboxes.shape)
-#             fmasks = fmasks
-#             print(image.shape, fbboxes.shape, fmasks.shape)
-            display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1], "/home/rragarwal4/matrixnet/imgs/",image_file[-10:]+"target_final.jpg" )
-#             torch_save_image(fmasks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_final.jpg",1)   
+            if fbboxes:
+                fbboxes = np.vstack(fbboxes)
+                fbboxes= np.concatenate((fbboxes[:,0:4] ,fbboxes[:,4:5]), axis = 1)
+            else:
+                fbboxes = np.zeros((0,5), dtype=np.float32)
+            if fmasks:
+                fmasks = torch.cat(fmasks, dim =0 )
+            else:
+                fmasks = torch.from_numpy(np.zeros( (fbboxes.shape[0],28,28), dtype=np.float32))
+#             print(debug_dir)
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
+            display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1],debug_dir+"/" ,str(ind)+"_wmasks.jpg" )
+            
             #print(debug_file)
             cv2.imwrite(debug_file,image)
 

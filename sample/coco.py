@@ -446,7 +446,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 #         display_images( [segmentations[i] for i in range(len(segmentations)) ], "/home/rragarwal4/matrixnet/", "1.jpg" )
         segmentations = minimize_mask(segmentations, detections, minimask_shape)
 #         display_images(  [segmentations[i] for i in range(len(segmentations)) ], "/home/rragarwal4/matrixnet/", "5.jpg" )
-        segmentations_batch[b_ind][:segmentations.shape[0],:,:] = segmentations
+        
 #         print("-----")
 #         display_instances(image, np.array(detections), segmentations, np.array(detections[:,-1]), "/home/rragarwal4/matrixnet/", "1.jpg")
         if not debug:
@@ -458,11 +458,12 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         images[b_ind] = image.transpose((2, 0, 1))
                
         dets = []
-        
+        msks = [] 
         for ind, detection in enumerate(detections):
             for olayer_idx in layer_map_using_ranges(detection[2] - detection[0], detection[3] - detection[1],layers_range, fpn_flag):
 #                 print(dets)
                 dets.append([0] + list(detection) +[olayer_idx])
+                msks.append(segmentations[ind:ind+1])
                 width_ratio = output_sizes[olayer_idx][1] / input_size[1]
                 height_ratio = output_sizes[olayer_idx][0] / input_size[0]
                 
@@ -513,11 +514,16 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 anchors_tags[olayer_idx][b_ind, tag_ind] = yc * output_sizes[olayer_idx][1] + xc
                 
                 tag_lens[olayer_idx][b_ind] += 1
-                
+        msks = np.vstack(msks)        
+#         print(msks.shape)
         if len(dets) > 0:
             detections_batch[b_ind][:len(dets),:] = np.array(dets)
+            segmentations_batch[b_ind][:len(msks),:,:] = msks
         else:
             print("zero dets in image")
+        
+#         print(len(dets))
+#         print(segmentations.shape[0])
         
     for b_ind in range(batch_size):
         for olayer_idx in range(len(tag_lens)):
