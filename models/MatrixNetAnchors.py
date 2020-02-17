@@ -266,11 +266,11 @@ class model(nn.Module):
         
         masks_preds = masks_preds.view(batch_size, nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
         
-        mp = masks_preds[0].clone().detach()
+      
 #         print(mp.shape)
         
-        r= rois_label[0]-1
-        r= r.long().clone().detach()
+        
+       
 #         print(r.shape)
         
 #         mp = mp.gather
@@ -319,7 +319,7 @@ class model(nn.Module):
         bboxes_for_masks=bboxes_decoded.new(batch_size, prenms_nroi, 7).zero_()
 #         print(bboxes_decoded[0:,1:4,:])
         
-        bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,5:6] #score
+        bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,4:5] #score
         bboxes_for_masks[:,:,1:5] = bboxes_decoded[:,:,0:4]*8 #bbox cords
         bboxes_for_masks[:,:,5:6] = bboxes_decoded[:,:,7:8] #classes
         bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer
