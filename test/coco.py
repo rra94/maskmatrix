@@ -59,7 +59,7 @@ def unmold_mask(bbox, mask, image_shape,flag_flip_images):
 #         print(type(m))
 #         print(np.sum(m))
         m = np.array(Image.fromarray(m).resize((widths,heights)))
-        print(m)
+#         print(m)
 
 #         m = np.where(m >= threshold, 1, 0)
         full_masks[i][y1:y2, x1:x2] = m
@@ -275,9 +275,9 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         os.makedirs(debug_dir)
 
     if db.split != "trainval":
-        db_inds = db.db_inds[:2] if debug else db.db_inds
+        db_inds = db.db_inds[:10] if debug else db.db_inds
     else:
-        db_inds = db.db_inds[:2] if debug else db.db_inds[:2]
+        db_inds = db.db_inds[:10] if debug else db.db_inds[:2]
     num_images = db_inds.size
 
     K             = db.configs["top_k"]
@@ -410,10 +410,10 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:7].astype(np.float32)
             top_masks[image_id][j + 1] = ms[keep_inds][:,:,:]
 #             print(top_masks[image_id][j + 1].shape)
-            if  merge_bbox:
-                soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
-            else:
-                soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
+#             if  merge_bbox:
+#                 soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
+#             else:
+#                 soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
             top_bboxes[image_id][j + 1] = top_bboxes[image_id][j + 1][:, 0:5]
                 
         
@@ -430,12 +430,12 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 keep_inds = (top_bboxes[image_id][j][:, -1] >= thresh)
                 top_bboxes[image_id][j] = top_bboxes[image_id][j][keep_inds]
                 top_masks[image_id][j] = top_masks[image_id][j][keep_inds]
-                
                                    
         if debug:
             image_file = db.image_file(db_ind)
             image      = cv2.imread(image_file)
-
+            fmasks=[]
+            fbboxes =[]
             for j in range(categories, 0, -1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] > 0.3)
                 cat_name  = db.class_name(j)
@@ -443,8 +443,17 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 color     = np.random.random((3, )) * 0.6 + 0.4
                 color     = color * 255
                 color     = color.astype(np.int32).tolist()
-                fbboxes = top_bboxes[image_id][j][keep_inds]
-                fmasks = top_masks[image_id][j][keep_inds]
+                fb = top_bboxes[image_id][j][keep_inds]
+                if fb.shape[0]>0:
+                    print(fb.shape)
+                    c = np.array([[j-1]*fb.shape[0]]).T
+#                     print(c.shape)
+                    fb = np.concatenate((top_bboxes[image_id][j][keep_inds], c ), axis = 1)
+#                     print(fb)
+                    fm =  top_masks[image_id][j][keep_inds]
+                    fm = unmold_mask(fb, fm,image.shape[:2],flag_flip_images  )
+                    fbboxes.append( fb)
+                    fmasks.append(fm)
 #                 print(image.shape)
 #                 torch_save_image(torch.from_numpy(image.transpose((2, 0, 1))).float(),  "/home/rragarwal4/matrixnet/imgs/target_img.jpg",1)
 #                 if fmasks.shape[0]>0:
@@ -481,7 +490,16 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                         (bbox[2], bbox[3]),
                         color, 2
                     )
-                    
+            fmasks = [torch.from_numpy(fm) for fm in fmasks]
+            fmasks = torch.cat(fmasks, dim =0 )
+#             print(fmasks.shape)
+            fbboxes = np.vstack(fbboxes)
+            fbboxes= np.concatenate((fbboxes[:,0:4] ,fbboxes[:,4:5]), axis = 1)
+#             print(fbboxes.shape)
+#             fmasks = fmasks
+#             print(image.shape, fbboxes.shape, fmasks.shape)
+            display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1], "/home/rragarwal4/matrixnet/imgs/",image_file[-10:]+"target_final.jpg" )
+#             torch_save_image(fmasks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_final.jpg",1)   
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
             #print(debug_file)
             cv2.imwrite(debug_file,image)

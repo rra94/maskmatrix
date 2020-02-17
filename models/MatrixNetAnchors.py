@@ -251,7 +251,7 @@ class model(nn.Module):
 # 
         
 #         print(torch.sum(target_mask[0]))
-#         save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
+        save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
 
         pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         pooled_feat = self.RCNN_head(pooled_feat)
@@ -266,6 +266,18 @@ class model(nn.Module):
         
         masks_preds = masks_preds.view(batch_size, nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )
         
+        mp = masks_preds[0].clone().detach()
+#         print(mp.shape)
+        
+        r= rois_label[0]-1
+        r= r.long().clone().detach()
+#         print(r.shape)
+        
+#         mp = mp.gather
+#         print(torch.sum(mp[0]))
+#         save_image(mp.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_preds.jpg",32)
+
+        
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, dim = 1)
         cls_score = cls_score.view(batch_size, nroi, -1)
@@ -275,6 +287,9 @@ class model(nn.Module):
             anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
             anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
 #         print(masks_preds.size(), target_mask.size())
+
+
+        
         return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, self.classes
 
     def _test(self, *xs, **kwargs):
@@ -391,7 +406,7 @@ class MatrixNetAnchorsLoss(nn.Module):
         rois_label = rois_label.flatten().long()
         RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label)
         mrcnn_mask_loss = self._compute_mrcnn_mask_loss(target_mask, rois_label, masks_preds)
-#         print(mrcnn_mask_loss)
+        print(mrcnn_mask_loss)
         loss = focal_loss + corner_regr_loss + RCNN_loss_bbox +  RCNN_loss_cls + mrcnn_mask_loss
         return loss.unsqueeze(0)
     
@@ -419,26 +434,30 @@ class MatrixNetAnchorsLoss(nn.Module):
         batch_size , nrois, h,w,nclasses = pred_masks.shape
         target_masks = target_masks.view(batch_size*nrois,h,w )
         pred_masks = pred_masks. view(batch_size*nrois,h,w ,nclasses )
-        
-        positive_ix = torch.nonzero(target_class_ids > 0).view(-1)
- 
-        positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)
-        positive_class_ids = positive_class_ids -1
-#         print(positive_ix)
-#         indices = torch.stack((positive_ix, positive_class_ids), dim=1)
+        if target_class_ids.size():
+                positive_ix = torch.nonzero(target_class_ids > 0).view(-1)
+                target_class_ids = target_class_ids -1
+                positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)
+#                 print(positive_class_ids.shape)
+        #         indices = torch.stack((positive_ix, positive_class_ids), dim=1)
 
-        # Gather the masks (predicted and true) that contribute to loss
-        y_true = target_masks[positive_ix,:,:]
-        
-        y_pred = pred_masks[positive_ix,:,:,positive_class_ids]
-#         print(y_pred.shape)
-#         y_pred = torch.index_select(y_pred, )
-#         print(y_pred.shape)
+                # Gather the masks (predicted and true) that contribute to loss
+                y_true = target_masks[positive_ix,:,:]
+#                 print(y_true.type())
+                y_pred = pred_masks[positive_ix,:,:,:]
+                y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
+         
+                indices = positive_class_ids.unsqueeze(1).unsqueeze(1).unsqueeze(1).expand_as(y_pred).long()
+                print(indices.shape)
+                y_pred_final= torch.gather(y_pred, 3, indices)
+                print("---------",y_pred_final.shape)
+        #         y_pred = torch.index_select(y_pred, )
+        #         print(y_pred.shape)
 
-        # Binary cross entropy
-        loss = F.binary_cross_entropy(y_pred, y_true)
-
-
+                loss = 0#F.binary_cross_entropy(y_pred, y_true)
+        else:
+            loss = 0
+            
         return loss
     
 loss = MatrixNetAnchorsLoss()
