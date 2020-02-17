@@ -264,7 +264,7 @@ class model(nn.Module):
         pooled_masks = pooled_masks.view(batch_size*nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
         
-        #masks_preds = masks_preds.view(batch_size, nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )
+        masks_preds = masks_preds.view(batch_size, nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
         
         mp = masks_preds[0].clone().detach()
 #         print(mp.shape)
@@ -447,7 +447,7 @@ class MatrixNetAnchorsLoss(nn.Module):
                 y_onhot = torch.floatTensor(batch_size, nclasses).astype(positive_class_ids)
                 y_onehot.zero_()
                 y_onehot.scatter_(1, positive_class_ids, 1)
-                y_onehot=y_onehot.view(batch_size,-1)
+                y_onehot=y_onehot.view(-1)
                 y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
                # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
          
