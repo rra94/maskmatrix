@@ -394,8 +394,8 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     tag_lens    = [np.zeros((batch_size, ), dtype=np.int32) for output_size in output_sizes]
     
     
-#     db_size = db.db_inds.size
-    db_size = 10
+    db_size = db.db_inds.size
+#     db_size = 10
     
 
     for b_ind in range(batch_size):
@@ -404,7 +404,9 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 
         db_ind = db.db_inds[k_ind]
         k_ind  = (k_ind + 1) % db_size
-
+        while len( db.detections(db_ind)) >0 and len(db.segmentations(db_ind)) >0:
+            db_ind = db.db_inds[k_ind]
+            k_ind  = (k_ind + 1) % db_size
         # reading image
         image_file = db.image_file(db_ind)
         image      = cv2.imread(image_file)
