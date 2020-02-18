@@ -35,7 +35,24 @@ def minimize_mask(mask, bbox, minimask_shape):
 #         print(m)
     return mini_mask
 
-
+def masks_to_dets(cats, masks):
+    bboxes = []
+    masks_final = []
+    for m,i in enumerate(masks):
+        print(m,i)
+        if len(m)<6:
+            continue
+        x1 = min(m[:,0::2])
+        y1 = min(m[:,1::2])
+        x2 = max(m[:,0::2])
+        y2 = max(m[:,1::2])
+        
+        bbox.append([x1,y1,x2,y2,cat[i]])
+        masks_final.append(m)
+        
+    return bboxes, masks_final
+        
+    
 def annToRLE(input_size, segm):
     """
     Convert annotation which can be polygons, uncompressed RLE to RLE.
@@ -386,9 +403,9 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     anchors_heatmaps = [np.zeros((batch_size, 1, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
     detections_batch     = np.zeros((batch_size,200, 7), dtype=np.float32) 
     segmentations_batch =  np.zeros((batch_size,200, minimask_shape[0],minimask_shape[1] ), dtype=np.int32) 
+    mask_detections_batch     = np.zeros((batch_size,200, 7), dtype=np.float32) 
     tl_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     br_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
-    
     anchors_tags = [np.zeros((batch_size, max_tag_len), dtype=np.int64) for output_size in output_sizes]
     tag_masks   = [np.zeros((batch_size, max_tag_len), dtype=bool) for output_size in output_sizes]
     tag_lens    = [np.zeros((batch_size, ), dtype=np.int32) for output_size in output_sizes]
@@ -399,23 +416,19 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     
 
     for b_ind in range(batch_size):
-#         if not debug and k_ind == 0:
-#             db.shuffle_inds()
+        if not debug and k_ind == 0:
+            db.shuffle_inds()
 
         db_ind = db.db_inds[k_ind]
         k_ind  = (k_ind + 1) % db_size
-        while len( db.detections(db_ind)) >0 and len(db.segmentations(db_ind)) >0:
-            db_ind = db.db_inds[k_ind]
-            k_ind  = (k_ind + 1) % db_size
-        # reading image
+        
         image_file = db.image_file(db_ind)
         image      = cv2.imread(image_file)
         
         
         # reading detections
         detections = db.detections(db_ind)
-        segmentations = db.segmentations(db_ind)
-
+        segmentations, cats = db.segmentations(db_ind)
        
         if not debug and rand_crop:
             image, detections,segmentations = random_crop(image, detections, rand_scales, input_size, border=border, segmentations=segmentations)
@@ -426,7 +439,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         
         image, detections, segmentations = _resize_image(image, detections, input_size, segmentations)
               
-        detections, segmentations = _clip_detections(image, detections, segmentations)
+        mask_detections, segmentations = _clip_detections(image, detections, segmentations)
         
 
         # flipping an image randomly
@@ -440,17 +453,22 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 seg[:, 0::2] = width - seg[:, 0::2] - 1
             
         
-        
-        segmentations = [maskUtils.decode(annToRLE(image.shape[:2] , rle.tolist())) for rle in segmentations]
-        segmentations = np.stack(segmentations, axis=2).astype(np.bool)
-        segmentations=segmentations.transpose((2, 0, 1))
+        mask_dets, segmentations = masks_to_dets(cats, segmentations)
+        if len(segmentations) >0:
+            segmentations = [maskUtils.decode(annToRLE(image.shape[:2] , rle.tolist())) for rle in segmentations]
+            segmentations = np.stack(segmentations, axis=2).astype(np.bool)
+            segmentations=segmentations.transpose((2, 0, 1))
+            segmentations = minimize_mask(segmentations, detections, minimask_shape)
+        else:
+            segmentations = np.zeros((1,)+minimask_shape)
+
 
 #         display_images( [segmentations[i] for i in range(len(segmentations)) ], "/home/rragarwal4/matrixnet/", "1.jpg" )
-        segmentations = minimize_mask(segmentations, detections, minimask_shape)
 #         display_images(  [segmentations[i] for i in range(len(segmentations)) ], "/home/rragarwal4/matrixnet/", "5.jpg" )
         
 #         print("-----")
 #         display_instances(image, np.array(detections), segmentations, np.array(detections[:,-1]), "/home/rragarwal4/matrixnet/", "1.jpg")
+
         if not debug:
             image = image.astype(np.float32) / 255.
             if rand_color:
@@ -461,11 +479,13 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                
         dets = []
         msks = [] 
+        mask_dets = []
         for ind, detection in enumerate(detections):
             for olayer_idx in layer_map_using_ranges(detection[2] - detection[0], detection[3] - detection[1],layers_range, fpn_flag):
-#                 print(dets)
                 dets.append([0] + list(detection) +[olayer_idx])
                 msks.append(segmentations[ind:ind+1])
+                mask_dets.append([0] + list(mask_detections) +[olayer_idx])
+      
                 width_ratio = output_sizes[olayer_idx][1] / input_size[1]
                 height_ratio = output_sizes[olayer_idx][0] / input_size[0]
                 
@@ -516,16 +536,19 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 anchors_tags[olayer_idx][b_ind, tag_ind] = yc * output_sizes[olayer_idx][1] + xc
                 
                 tag_lens[olayer_idx][b_ind] += 1
-        msks = np.vstack(msks)        
-#         print(msks.shape)
+                
         if len(dets) > 0:
             detections_batch[b_ind][:len(dets),:] = np.array(dets)
-            segmentations_batch[b_ind][:len(msks),:,:] = msks
         else:
             print("zero dets in image")
         
-#         print(len(dets))
-#         print(segmentations.shape[0])
+        if len(msks) >0:
+            msks = np.vstack(msks)
+            segmentations_batch[b_ind][:len(msks),:,:] = msks
+            mask_detections_batch[b_ind][:len(mask_dets),:] = np.array(mask_dets)
+        else:
+            print("zero seg in image")
+
         
     for b_ind in range(batch_size):
         for olayer_idx in range(len(tag_lens)):
@@ -540,6 +563,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     anchors_tags     = [torch.from_numpy(t) for t in anchors_tags]
     tag_masks   = [torch.from_numpy(tags) for tags in tag_masks]
     detections_batch = [torch.from_numpy(detections_batch)]
+    mask_detections_batch = [torch.from_numpy(mask_detections_batch)]
     ratios =[ [ [i]+ ratios[i] for i in ratios] for _ in range(batch_size)]
     ratios = [torch.from_numpy(np.array(ratios))]
     segmentations_batch = [torch.from_numpy(segmentations_batch)]
@@ -555,7 +579,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     
 #     print(ratios)
     return {
-        "xs": [images, anchors_tags, detections_batch, ratios, segmentations_batch],
+        "xs": [images, anchors_tags, detections_batch, ratios, segmentations_batch, mask_detections_batch ],
         "ys": [anchors_heatmaps, tl_corners_regrs, br_corners_regrs, tag_masks]
     }, k_ind
 def sample_data(db, k_ind, data_aug=True, debug=False):

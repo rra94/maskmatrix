@@ -251,7 +251,7 @@ class model(nn.Module):
 # 
         
 #         print(torch.sum(target_mask[0]))
-        save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
+#        save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
 
         pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         pooled_feat = self.RCNN_head(pooled_feat)
