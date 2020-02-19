@@ -46,6 +46,17 @@ def minimize_mask(mask, bbox, minimask_shape):
 #         print(m)
     return mini_mask
 
+def mask_keeps(detections, segmentations):
+#     print(segmentations.shape)
+    n_seg = segmentations.shape[0]
+    s =segmentations.reshape(n_seg, -1)
+    print(s.shape)
+    keeps = np.nonzero(np.sum(segmentations.reshape(n_seg, -1), axis=1)>0)
+    print(keeps)
+    return detections[keeps], segmentations[keeps]
+    
+    
+
 def masks_to_dets(cats, masks):
 #     print(cats)
     bboxes = []
@@ -144,17 +155,17 @@ def _clip_detections(image, detections, segmentations):
     detections[:, 0:4:2] = np.clip(detections[:, 0:4:2], 0, width - 1)
     detections[:, 1:4:2] = np.clip(detections[:, 1:4:2], 0, height - 1)
     
-    for seg in segmentations:
-        if seg.size <= 6:
-            continue
-        seg[:, 0::2] = np.clip(seg[:, 0::2], 0, width - 1)
-        seg[:, 1::2] = np.clip(seg[:, 1::2], 0, height - 1)
+#     for seg in segmentations:
+#         if seg.size <= 6:
+#             continue
+#         seg[:, 0::2] = np.clip(seg[:, 0::2], 0, width - 1)
+#         seg[:, 1::2] = np.clip(seg[:, 1::2], 0, height - 1)
 
-    keep_inds  = ((detections[:, 2] - detections[:, 0]) > 0) & \
-                 ((detections[:, 3] - detections[:, 1]) > 0)
+    keep_inds  = ((detections[:, 2] - detections[:, 0]) >= 1) & \
+                 ((detections[:, 3] - detections[:, 1]) >= 1)
 #     print(keep_inds)
     detections = detections[keep_inds]
-    segmentations = [seg for i,seg in enumerate(segmentations) if keep_inds[i] ]
+    segmentations = segmentations[keep_inds]
     
     return detections, segmentations
 
@@ -427,8 +438,8 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     tag_lens    = [np.zeros((batch_size, ), dtype=np.int32) for output_size in output_sizes]
     
     
-#     db_size = db.db_inds.size
-    db_size = 10
+    db_size = db.db_inds.size
+#     db_size = 10
     
 
     for b_ind in range(batch_size):
@@ -483,21 +494,36 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         segmentations = agumented['masks']
         detections  = agumented['bboxes']
         bbox_ids = agumented['bbox_ids']
-        print(bbox_ids)
+#         print(bbox_ids)
+
+        categories = np.expand_dims(categories, axis=1)
+        categories= categories[bbox_ids]
         
+    
         detections = np.array(detections)
         detections[:, 2] +=detections[:,0]
         detections[:, 3] +=detections[:,1]
-        detections = np.concatenate((np.array(detections), np.expand_dims(categories, axis=1)), axis=1)
-#         print(detections)
+        detections = np.concatenate((np.array(detections), categories), axis=1)
 
         segmentations_ = np.stack(segmentations, axis=2).astype(np.bool)
         segmentations=segmentations_.transpose((2, 0, 1))
         
+        print(0, detections.shape, segmentations.shape )
+        
+        segmentations = segmentations[bbox_ids]
+                                    
+        print(1, detections.shape, segmentations.shape )
+        
+        detections, segmentations  = _clip_detections(image, detections, segmentations)
+        print(2, detections.shape, segmentations.shape )
+        
+        mask_dets, segmentations = mask_keeps(detections, segmentations)
+        segmentations = minimize_mask(segmentations, mask_dets, minimask_shape)
+        print(3, mask_dets.shape, segmentations.shape )
+        
         
         display_instances(image, detections, segmentations_, detections[:,-1], "/home/rragarwal4/matrixnet/imgs/", str(db_ind)+"_reformatted.jpg")
 
-        segmentations = minimize_mask(segmentations, mask_dets, minimask_shape)
                               
 # #         print(len(segmentations))
 #         if len(segmentations) >0:
@@ -517,7 +543,8 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 if lighting:
                     lighting_(data_rng, image, 0.1, db.eig_val, db.eig_vec)
         images[b_ind] = image.transpose((2, 0, 1))
-#         print(segmentations.shape, mask_dets.shape,  detections.shape)
+        
+        
         
 #         print(np.vstack((detections[1:4,:],mask_dets[1:4,:])), "--------------")
         dets = []
