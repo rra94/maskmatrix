@@ -31,7 +31,7 @@
         "rand_scale_step": 0.1,
         "rand_scales": null,
 	"num_dets":2000,
-        "rand_crop": false,
+        "rand_crop": true,
         "rand_color": false,
 
         "border": 128,

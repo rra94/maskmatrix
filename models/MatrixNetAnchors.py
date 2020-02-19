@@ -175,14 +175,17 @@ class model(nn.Module):
         anchors_inds = xs[1]
         ratios = xs[3][0]
         gt_masks = xs[4][0]
+        mask_gt_rois = xs[5][0]
+        
         features, anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr = self.rpn.forward(image)
         rois = self.proposals_generators(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr)
-        rois, rois_label, bbox_targets_tl, bbox_targets_br , bbox_inside_weights, bbox_outside_weights , target_mask =self.proposal_target_layer(rois, gt_rois, gt_masks, ratios)
+        
+        rois, rois_label, bbox_targets_tl, bbox_targets_br , bbox_inside_weights, bbox_outside_weights , target_mask, mask_select, mask_labels =self.proposal_target_layer(rois, gt_rois, gt_masks, mask_gt_rois, ratios)
         
 #         print(gt_masks[0].unsqueeze(1).shape)
         
-#         x = gt_masks[0].float()
-#         save_image(x.unsqueeze(1), "/home/rragarwal4/matrixnet/imgs/gt.jpg",5)
+        x = gt_masks[0].float()
+        save_image(x.unsqueeze(1), "/home/rragarwal4/matrixnet/imgs/gt.jpg",5)
         
 #         print(torch.sum(target_mask[0]))
 #         save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
@@ -243,15 +246,14 @@ class model(nn.Module):
         bbox_targets_br = _gather_feat(bbox_targets_br, inds)
         bbox_inside_weights = _gather_feat(bbox_inside_weights, inds)
         bbox_outside_weights = _gather_feat(bbox_outside_weights, inds)
-        
-#         print(bbox_outside_weights.shape, "bbox_outside_weights")
-#         print(target_mask.shape, "target_mask")
         target_mask = _gather_feat(target_mask, inds)
-        
-# 
-        
+        mask_select = _gather_feat(mask_select, inds)
+        mask_labels = _gather_feat(mask_labels, inds)
+
+
+              
 #         print(torch.sum(target_mask[0]))
-#        save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
+        save_image(target_mask[0].float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target.jpg",32)
 
         pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         pooled_feat = self.RCNN_head(pooled_feat)
@@ -263,16 +265,8 @@ class model(nn.Module):
 #         print(pooled_masks.size(), "POOOOLEDMASKS")
         pooled_masks = pooled_masks.view(batch_size*nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
-        
         masks_preds = masks_preds.view(batch_size, nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
         
-      
-
-        
-#         mp = mp.gather
-#         print(torch.sum(mp[0]))
-#         save_image(mp.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_preds.jpg",32)
-
         
         cls_score = self.RCNN_cls_score(pooled_feat)
         cls_prob = F.softmax(cls_score, dim = 1)
@@ -282,11 +276,8 @@ class model(nn.Module):
         for ind in range(len(anchors_inds)):
             anchors_tl_corners_regr[ind] = _tranpose_and_gather_feat(anchors_tl_corners_regr[ind], anchors_inds[ind])
             anchors_br_corners_regr[ind] = _tranpose_and_gather_feat(anchors_br_corners_regr[ind], anchors_inds[ind])
-#         print(masks_preds.size(), target_mask.size())
-
-
         
-        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, self.classes
+        return anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, mask_select, mask_labels, self.classes
 
     def _test(self, *xs, **kwargs):
         image = xs[0][0]
@@ -400,13 +391,14 @@ class MatrixNetAnchorsLoss(nn.Module):
             focal_loss = focal_loss / numf
         
         #classification and prediction loss
-        rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, nclasses = outs[3:]
+        rois, cls_score, cls_prob , bbox_pred_tl,bbox_pred_br,bbox_targets_tl, bbox_targets_br, rois_label, bbox_inside_weights, bbox_outside_weights, masks_preds, target_mask, mask_select, mask_labels, nclasses = outs[3:]
         
         RCNN_loss_cls = 0
         RCNN_loss_bbox = self._compute_RCNN_loss_bbox(bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights)
         rois_label = rois_label.flatten().long()
+        mask_labels = mask_labels.flatten().long()
         RCNN_loss_cls = F.cross_entropy(cls_score.view(-1, nclasses), rois_label)
-        mrcnn_mask_loss = self._compute_mrcnn_mask_loss(target_mask, rois_label, masks_preds)
+        mrcnn_mask_loss = self._compute_mrcnn_mask_loss(target_mask, mask_labels, masks_preds, mask_select)
 #         print(RCNN_loss_bbox)
         loss = focal_loss + corner_regr_loss + RCNN_loss_bbox +  RCNN_loss_cls + mrcnn_mask_loss
         return loss.unsqueeze(0)
@@ -427,45 +419,26 @@ class MatrixNetAnchorsLoss(nn.Module):
             loss_box = loss_box.mean()
         return loss_box
     
-    def _compute_mrcnn_mask_loss(self,target_masks, target_class_ids, pred_masks):
-#         print(target_class_ids.shape)
-#         if target_class_ids.size():
-            # Only positive ROIs contribute to the loss. And only
-            # the class specific mask of each ROI.
+    def _compute_mrcnn_mask_loss(self,target_masks, target_class_ids, pred_masks, mask_select):
+
         batch_size , nrois, nclasses, h, w = pred_masks.shape
         target_masks = target_masks.view(batch_size*nrois,h,w )
         pred_masks = pred_masks. view(batch_size*nrois,nclasses, h,w  )
         if target_class_ids.size():
                 positive_ix = torch.nonzero(target_class_ids > 0).view(-1)
                 positive_class_ids = target_class_ids[positive_ix.clone().detach()].long().view(-1)-1
-#                 print(positive_class_ids.shape)
-        #         indices = torch.stack((positive_ix, positive_class_ids), dim=1)
 
-                # Gather the masks (predicted and true) that contribute to loss
                 y_true = target_masks[positive_ix,:,:]
-#                 print(y_true.type())
                 y_pred = pred_masks[positive_ix,:,:,:]
                 y_onehot = torch.FloatTensor(positive_class_ids.shape[0], nclasses).type_as(positive_class_ids)
                 y_onehot.zero_()
-                #print(y_onehot.shape, positive_class_ids.shape)
 
                 y_onehot.scatter_(1, positive_class_ids.view(-1,1), 1)
                 y_onehot=torch.nonzero(y_onehot.view(-1))
                 y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
                 y_pred_final = y_pred_final.squeeze(1)
-#                 save_image(y_true.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_loss.jpg",32)
-                #print(y_pred_final.shape, y_true.shape)
-               # y_pred_final = y_pred.view(nclasses*y_pred.shape[0], 28,28)
-         
-                #indices = positive_class_ids.unsqueeze(1).unsqueeze(1).unsqueeze(1).expand_as(y_pred).long()
-                #print(indices.shape)
-                #y_pred_final= torch.gather(y_pred, 3, indices)
-               # print("---------",y_pred_final.shape)
-        #         y_pred = torch.index_select(y_pred, )
-        #         print(y_pred.shape)
 
                 loss = F.binary_cross_entropy(y_pred_final, y_true)
-#                 time.sleep(60)
         else:
             loss = torch.FloatTensor([0]).type_as(pred_masks).detach()
             

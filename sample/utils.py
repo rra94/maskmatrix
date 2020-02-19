@@ -91,27 +91,20 @@ def random_crop(image, detections, random_scales, view_size, border=64, segmenta
     cropped_detections[:, 0:4:2] -= x0
     cropped_detections[:, 1:4:2] -= y0
     for seg in segmentations:
+#         print(seg.shape, seg.size, "-------------SEG----------")
+        if seg.size <= 6:
+            continue
         seg[:,0::2] -= x0 
         seg[:,1::2] -= y0 
     cropped_detections[:, 0:4:2] += cropped_ctx - left_w
     cropped_detections[1:4:2] += cropped_cty - top_h
     for seg in segmentations:
+        if seg.size<=6:
+            continue
         seg[:,0::2] += cropped_ctx - left_w 
         seg[:,1::2] += cropped_cty - top_h  
 
     return cropped_image, cropped_detections,segmentations
 
-def resize_mask(mask, input_size):
-    """Resizes a mask using the given scale and padding.
-    Typically, you get the scale and padding from resize_image() to
-    ensure both, the image and the mask, are resized consistently.
-    scale: mask scaling factor
-    padding: Padding to add to the mask in the form
-            [(top, bottom), (left, right), (0, 0)]
-    """
-    h, w = mask.shape[:2]
-    height_ratio , width_ratio = input_size[0]/h, input_size[1]/w
-    mask = scipy.ndimage.zoom(mask, zoom=[height_ratio , width_ratio, 1], order=0)
-#     mask = np.pad(mask, padding, mode='constant', constant_values=0)
-    return mask
+
 

@@ -122,37 +122,37 @@ class MSCOCO(DETECTION):
                 category       = self._coco_to_class_map[cat_id]
                 for annotation in annotations:
                     
-                    bbox = np.array(annotation["bbox"])
-                    h, w = bbox[[2,3]]
-                    bbox[[2, 3]] += bbox[[0, 1]]
+                    bbox = annotation["bbox"]
+#                     h, w = bbox[[2,3]]
+#                     bbox[[2, 3]] += bbox[[0, 1]]
                     if category:
-                        m =  np.array(annotation['segmentation'])     
+                        seg =  annotation['segmentation']
                     if annotation['iscrowd']:
                         category *= -1
                     categories.append(category)
-                    instance_masks.append(m)
+                    instance_masks.append(seg)
                     bboxes.append(bbox)
             bboxes     = np.array(bboxes, dtype=float)
             categories = np.array(categories, dtype=float)
             if bboxes.size == 0 or categories.size == 0 :
-                self._detections[image_id] = np.zeros((0, 5), dtype=np.float32)
-                self._segmentations[image_id] = [np.zeros((0, 2), dtype=np.int), np.zeros((0, 1), dtype=np.int)]
+                self._detections[image_id] = []
+                self._segmentations[image_id] = [[]]
                 
             else:
-                self._detections[image_id] = np.hstack((bboxes, categories[:, None]))
-                self._segmentations[image_id] = [instance_masks, categories[:,None]]
+                self._detections[image_id] = [bboxes, categories]
+                self._segmentations[image_id] = instance_masks
  
     
     def detections(self, ind):
         image_id = self._image_ids[ind]
-        detections = self._detections[image_id]
+        bboxes, categories = self._detections[image_id]
 
-        return detections.astype(float).copy()
+        return bboxes.astype(float).copy(), categories
     
     def segmentations(self, ind):
         image_id = self._image_ids[ind]
-        segmentations, cats = self._segmentations[image_id]
-        return [segmentations.copy(), cats.copy]
+        segmentations = self._segmentations[image_id]
+        return segmentations.copy()
 
     def _to_float(self, x):
         return float("{:.2f}".format(x))
