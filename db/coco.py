@@ -121,21 +121,18 @@ class MSCOCO(DETECTION):
                 annotations    = self._coco.loadAnns(annotation_ids)
                 category       = self._coco_to_class_map[cat_id]
                 for annotation in annotations:
-                    
-                    bbox = annotation["bbox"]
-#                     h, w = bbox[[2,3]]
-#                     bbox[[2, 3]] += bbox[[0, 1]]
                     if category:
+                        bbox = annotation["bbox"]
                         seg =  annotation['segmentation']
                     if annotation['iscrowd']:
-                        category *= -1
+                        continue
                     categories.append(category)
                     instance_masks.append(seg)
                     bboxes.append(bbox)
             bboxes     = np.array(bboxes, dtype=float)
             categories = np.array(categories, dtype=float)
             if bboxes.size == 0 or categories.size == 0 :
-                self._detections[image_id] = []
+                self._detections[image_id] = [np.zeros((0,5)) ,np.zeros((0,1))]
                 self._segmentations[image_id] = [[]]
                 
             else:
@@ -147,7 +144,7 @@ class MSCOCO(DETECTION):
         image_id = self._image_ids[ind]
         bboxes, categories = self._detections[image_id]
 
-        return bboxes.astype(float).copy(), categories
+        return bboxes.astype(float).copy(), categories.copy()
     
     def segmentations(self, ind):
         image_id = self._image_ids[ind]

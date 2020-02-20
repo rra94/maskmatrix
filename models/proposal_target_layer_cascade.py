@@ -52,7 +52,7 @@ class _ProposalTargetLayer(nn.Module):
             
         bbox_outside_weights = (bbox_inside_weights > 0).float()
 
-        return rois, labels, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights, target_masks, mask_select, mask_labels
+        return rois, labels, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights , target_masks, mask_select, mask_labels
 
     def backward(self, top, propagate_down, bottom):
         """This layer does not propagate gradients."""
@@ -154,7 +154,7 @@ class _ProposalTargetLayer(nn.Module):
         for i in range(batch_size):
             fg_inds = torch.nonzero(max_overlaps[i] >= self.FG_THRESH).view(-1)
             fg_num_rois = fg_inds.numel()
-            print(fg_num_rois, "FGRIS")
+#             print(fg_num_rois, "FGRIS")
             # Select background RoIs as those within [BG_THRESH_LO, BG_THRESH_HI)
             bg_inds = torch.nonzero((max_overlaps[i] < self.BG_THRESH_HI) &
                                     (max_overlaps[i] >= self.BG_THRESH_LO)).view(-1)
@@ -206,38 +206,50 @@ class _ProposalTargetLayer(nn.Module):
         return labels_batch, rois_batch, bbox_target_data_tl, bbox_target_data_br
     
     def _masks_assignment(self, rois, mask_gt_boxes,  gt_masks):
+        
+        rois = rois.clone().detach()
+        
         overlaps = bbox_overlaps_batch(rois, mask_gt_boxes)
         max_overlaps, gt_assignment = torch.max(overlaps, 2)
         batch_size, rois_per_image = rois.shape[:2]
-        print(max_overlaps, gt_assignment)
+#         print(max_overlaps, gt_assignment)
         offset = torch.arange(0, batch_size)*mask_gt_boxes.size(1)
         offset = offset.view(-1, 1).type_as(gt_assignment) + gt_assignment
         labels = mask_gt_boxes[:,:,5].contiguous().view(-1)[(offset.view(-1),)].view(batch_size, -1)       
         target_mask_batch = rois.new(batch_size, rois_per_image, self.mask_shape, self.mask_shape).zero_()
-        gt_rois_batch = rois.new(batch_size, rois_per_image, 7).zero_()    
         mask_select = rois.new(batch_size, rois_per_image).zero_() 
         labels_batch = labels.new(batch_size, rois_per_image).zero_()
 
         for i in range(batch_size):
-            fg_inds = (max_overlaps[i] >= 0.7).view(-1)
+#             fg_inds =  (max_overlaps[i] >= 0.6).view(-1) * (max_overlaps[i] <= 0.8).view(-1)
+            fg_inds =  (max_overlaps[i] >= 0.7).view(-1)
+#             print(fg_inds)
 
+#             print(fg_inds)
             if torch.sum(fg_inds) > 0:
-                gt_rois_batch[i] = torch.index_select(mask_gt_boxes[i], 0, gt_assignment[i])
+                gt_rois_batch = torch.index_select(mask_gt_boxes[i][:,1:5], 0, gt_assignment[i])
                 mask_select[i] = fg_inds
-                norm_boxes = rois[i].clone().detach()
-                norm_gt = gt_rois_batch[i].clone().detach()
+                norm_boxes = rois[i][:,1:5].clone().detach()
+                norm_gt = gt_rois_batch.clone().detach()
+#                 print("------",norm_boxes)
                 norm_boxes[:,0:2] -= norm_gt[:,0:2]
                 norm_boxes[:,2:4] -= norm_gt[:,0:2]
-                dh = norm_gt[:,2:3]-norm_gt[:, 0:1]
-                dw = norm_gt[:,3:4]-norm_gt[:, 1:2]
+                dh = norm_gt[:,2:3]-norm_gt[:, 0:1]#+1e-10
+                dw = norm_gt[:,3:4]-norm_gt[:, 1:2]#+1e-10
+#                 print(gt_rois_batch)
                 labels_batch[i].copy_(labels[i])
                 roi_masks = torch.index_select(gt_masks[i], 0, gt_assignment[i])
                 
-                
-                
+#                 print(mask_select)
                 norm_boxes = torch.cat([56*norm_boxes[:, 0:1]/dh,56*norm_boxes[:, 1:2]/dw ,56*norm_boxes[:, 2:3]/dh,56*norm_boxes[:, 3:4]/dw ] ,dim=1).clone().detach()
+                norm_boxes = norm_boxes* fg_inds.unsqueeze(1).expand_as(norm_boxes).float()
+                
+#                 print(roi_masks.shape,norm_boxes.shape)
+#                 save_image(roi_masks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_brforecrop.jpg",5)
+#                 print(norm_boxes[fg_inds])
                 masks = crop_and_resize(roi_masks  , norm_boxes, self.mask_shape).clone().detach()
                 target_mask_batch[i] = masks
-            
-        return target_mask_batch, mask_select, labels_batch
+#                 save_image(masks.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_aftercrop.jpg",5)
+#             time.sleep(2)
+            return target_mask_batch, mask_select, labels_batch
 

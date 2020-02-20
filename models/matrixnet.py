@@ -201,12 +201,16 @@ def _gather_feat(feat, ind, mask=None):
         dim  = feat.size(2)
         ind  = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
         feat = feat.gather(1, ind)
-    elif len(feat.shape) ==4:    
-        dim1  = feat.size(2)
-        dim2 = feat.size(3)
-        ind  = ind.unsqueeze(2).unsqueeze(3).expand(ind.size(0), ind.size(1), dim1, dim2)
+    elif len(feat.shape) ==4:
+        d0, d1, d2, d3 = feat.shape
+
+        feat = feat.view(d0, d1, -1)
+        ind  = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), d2*d3)
+        feat = feat.gather(1, ind)
+        feat = feat.view(d0, d1, d2, d3)
+#         ind  = ind.unsqueeze(2).unsqueeze(3).expand(ind.size(0), ind.size(1), dim1, dim2)
 #         print(ind.shape, "INDS")
-        feat = feat.gather(1, ind)    
+#         feat = feat.gather(1, ind)    
     if mask is not None:
         mask = mask.unsqueeze(2).expand_as(feat)
         feat = feat[mask]

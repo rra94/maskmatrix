@@ -11,7 +11,7 @@
 import torch
 import numpy as np
 import pdb
-import torchvision.ops.roi_align
+import torchvision.ops.roi_align as roi_align
 from  torchvision.utils import save_image
 
 def bbox_transform(ex_rois, gt_rois):
@@ -255,16 +255,10 @@ def crop_and_resize(mask, boxes, mask_size):
     """
     
     assert len(boxes) == len(mask), "{} != {}".format(len(boxes), len(mask))
-    device = mask.device
-#     print(boxes)
-
-    batch_inds = torch.arange(len(boxes), device=device).to(dtype=boxes.dtype)[:, None]
+    batch_inds = torch.arange(len(boxes)).type_as(boxes)[:, None]
     rois = torch.cat([batch_inds, boxes], dim=1)  # Nx5
-
-    bit_masks = mask.to(dtype=torch.float32)
-    rois = rois.to(device=device)
-    output = torchvision.ops.roi_align(bit_masks[:, None, :, :], rois, (mask_size, mask_size)).squeeze(1)
-#     print(output, "osum")
-#     print(output.size(), "SIZEEEEEEE")
-    output = torch.round(output)    
+#     print(torch.min(boxes), torch.max(boxes))
+    bit_masks = mask.float()
+    output = roi_align(bit_masks[:, None, :, :], rois, (mask_size, mask_size)).squeeze(1)
+    output = torch.round(output).clone().detach()  
     return output
