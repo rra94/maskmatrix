@@ -394,7 +394,10 @@ class MatrixNetAnchorsLoss(nn.Module):
 #         print(RCNN_loss_cls)
         mask_labels = mask_labels.flatten().long()
         mrcnn_mask_loss = self._compute_mrcnn_mask_loss(target_mask, mask_labels, masks_preds, mask_select)
-        loss = focal_loss + corner_regr_loss + RCNN_loss_bbox +  RCNN_loss_cls + mrcnn_mask_loss
+
+        loss = focal_loss + corner_regr_loss + RCNN_loss_bbox +  RCNN_loss_cls
+        if mrcnn_mask_loss > 0:
+            loss += mrcnn_mask_loss
         return loss.unsqueeze(0)
     
     def _compute_RCNN_loss_bbox(self, bbox_pred_tl,bbox_pred_br, bbox_targets_tl, bbox_targets_br, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):        
@@ -442,12 +445,11 @@ class MatrixNetAnchorsLoss(nn.Module):
                     y_onehot=torch.nonzero(y_onehot.view(-1))
                     y_pred_final = y_pred.view(-1, h,w)[y_onehot,:,:]
                     y_pred_final = y_pred_final.squeeze(1)
-
                     loss = F.binary_cross_entropy(y_pred_final, y_true)
                 else:
-                    loss = torch.FloatTensor([0]).type_as(pred_masks).detach()
+                    loss = 0
         else:
-            loss = torch.FloatTensor([0]).type_as(pred_masks).detach()
+            loss = 0
 #         time.sleep(4)    
         return loss
     
