@@ -269,7 +269,9 @@ class model(nn.Module):
         rois[:,:,1:5] = rois[:,:,1:5] * 8
         
         _, inds = torch.topk(rois[:,:, 6], rois.size(1))
+        
         rois = _gather_feat(rois, inds)
+
         
         pooled_masks, pooled_feat, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,rois)
         
@@ -290,6 +292,9 @@ class model(nn.Module):
     
         bboxes_for_masks=bboxes_decoded.new(batch_size, prenms_nroi, 7).zero_()
 # #         print(bboxes_decoded[0:,1:4,:])
+
+        _, inds = torch.topk(bboxes_decoded[:,:, 6], bboxes_decoded.size(1))
+        bboxes_decoded = _gather_feat(bboxes_decoded, inds)
         
         bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,4:5] #score
         bboxes_for_masks[:,:,1:5] = bboxes_decoded[:,:,0:4]*8 #bbox cords
