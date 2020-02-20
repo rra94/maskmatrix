@@ -16,6 +16,7 @@ from PIL import Image
 import albumentations as A
 from pdb import set_trace as bp
 import time
+from functools import partial
 
 def _get_border(border, size):
     i = 1
@@ -23,87 +24,84 @@ def _get_border(border, size):
         i *= 2
     return border // i 
 
+
+def crop_img(image, height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h):
+    cropped_ctx, cropped_cty = width // 2, height // 2
+    x_slice = slice(cropped_ctx - left_w, cropped_ctx + right_w)
+    y_slice = slice(cropped_cty - top_h, cropped_cty + bottom_h)               
+    cropped_image = np.zeros((height, width), dtype=image.dtype)
+    cropped_image[y_slice, x_slice] = image[y0:y1, x0:x1]
+
+    return cropped_image
+
+def crop_mask(mask, height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h):
+    cropped_ctx, cropped_cty = width // 2, height // 2
+    x_slice = slice(cropped_ctx - left_w, cropped_ctx + right_w)
+    y_slice = slice(cropped_cty - top_h, cropped_cty + bottom_h)               
+
+    cropped_image = np.zeros((height, width), dtype=image.dtype)
+    cropped_image[y_slice, x_slice] = image[y0:y1, x0:x1]
+
+    return cropped_image
+
+
+
+def crop_box(bbox,height,width,x0,y0, left_w, top_h):
+    cropped_detections = box
+    cropped_ctx, cropped_cty = width // 2, height // 2
+    cropped_detections[0] -= x0
+    cropped_detections[1] -= y0
+    cropped_detections[0] += cropped_ctx - left_w
+    cropped_detections[1] += cropped_cty - top_h
+    cropped_detections[2] -= x0
+    cropped_detections[3] -= y0
+    cropped_detections[2] += cropped_ctx - left_w
+    cropped_detections[3] += cropped_cty - top_h
+    return cropped_detections
+    
 def data_augs(image,mask ,bbox, categories, height, width, border, rand_crop, rand_scales, debug ):
     
     
     params = A.BboxParams(format="coco", label_fields=["bbox_ids"])
-    
-    if not debug and rand_crop and rand_scales.any():
-        scale_limit = (rand_scales[1] - rand_scales[0])/2
-        transforms=[A.HorizontalFlip(p = 0.5),A.RandomScale(scale_limit,p=1.0)]
-        augmentation_pipeline = A.Compose(transforms, params)
-        agumented = augmentation_pipeline(image = image, masks = mask, bboxes=bbox, bbox_ids=np.arange(len(bbox)) )
+    categories = np.expand_dims(categories, axis=1)      
         
-        image = agumented['image']
-        segmentations = agumented['masks']
-        detections  = agumented['bboxes']
-        bbox_ids = agumented['bbox_ids']
+    if not debug and rand_crop:
         
-        categories = np.expand_dims(categories, axis=1)
-        categories= categories[bbox_ids]
-        
-        segmentations = [segmentations[x] for x in bbox_ids]
-
+      
         image_height, image_width = image.shape[:2]
-        w_border = _get_border(border,image_width)
-        h_border = _get_border(border,image_height)
-        print(w_border,h_border)
+        scale  = np.random.choice(rand_scales)
+        height = int(height * scale)
+        width  = int(width  * scale)
+
+        w_border = _get_border(border, image_width)
+        h_border = _get_border(border, image_height)
+
         ctx = np.random.randint(low=w_border, high=image_width - w_border)
         cty = np.random.randint(low=h_border, high=image_height - h_border)
-        
-        transforms=[A.RandomCrop(cty, ctx),A.PadIfNeeded(height,width, cv2.BORDER_CONSTANT ,value=0, mask_value=None)]
-        augmentation_pipeline = A.Compose(transforms, params)
-        agumented = augmentation_pipeline(image = image, masks = segmentations, bboxes=detections, bbox_ids=np.arange(len(detections)) )
-        
-        image = agumented['image']
-        segmentations = agumented['masks']
-        detections  = agumented['bboxes']
-        bbox_ids = agumented['bbox_ids']
-        
-        
-        categories= categories[bbox_ids]
-        segmentations = [segmentations[x] for x in bbox_ids]
 
-        
-    elif not debug and rand_crop :
-        
-        image_height, image_width = image.shape[:2]
-        w_border = _get_border(border,image_width)
-        h_border = _get_border(border,image_height)
-        ctx = np.random.randint(low=w_border, high=image_width - w_border)
-        cty = np.random.randint(low=h_border, high=image_height - h_border)
-        
-        transforms=[A.HorizontalFlip(p = 0.5),A.RandomCrop(cty, ctx),A.PadIfNeeded(height,width, cv2.BORDER_CONSTANT ,value=0, mask_value=None)]
-        
-        augmentation_pipeline = A.Compose(transforms, params)
-        agumented = augmentation_pipeline(image = image, masks = mask, bboxes=bbox, bbox_ids=np.arange(len(bbox)) )
-        
-        image = agumented['image']
-        segmentations = agumented['masks']
-        detections  = agumented['bboxes']
-        bbox_ids = agumented['bbox_ids']
-        
+        x0, x1 = max(ctx - width // 2, 0),  min(ctx + width // 2, image_width)
+        y0, y1 = max(cty - height // 2, 0), min(cty + height // 2, image_height)
 
-        
+        left_w, right_w = ctx - x0, x1 - ctx
+        top_h, bottom_h = cty - y0, y1 - cty
+
+        transforms=[A.Lambda( image=partial(crop_img,height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h) ,mask=partial(crop_mask,height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h) ,bbox = partial(crop_box,height,width,x0,y0, left_w, top_h)), A.Resize(height, width) ]
+
     else:
         image_height, image_width = image.shape[:2]
-        h = min(height, image_height)
-        w = min(width, image_width)
-#         transforms = [A.HorizontalFlip(p = 0.5),A.CenterCrop(h ,w ), A.PadIfNeeded(height,width, cv2.BORDER_CONSTANT ,value=0, mask_value=None)]
-        transforms = [A.Resize(height, width)]
-        augmentation_pipeline = A.Compose(transforms, params)
-        agumented = augmentation_pipeline(image = image, masks = mask, bboxes=bbox, bbox_ids=np.arange(len(bbox)) )
-        image = agumented['image']
-        segmentations = agumented['masks']
-        detections  = agumented['bboxes']
-        bbox_ids = agumented['bbox_ids']
-        categories = np.expand_dims(categories, axis=1)
-        categories= categories[bbox_ids]
-        segmentations = [segmentations[x] for x in bbox_ids]
-
+        hw = max(image_height, image_height)
+        transforms = [A.HorizontalFlip(p = 0.5),A.PadIfNeeded(hw,hw, cv2.BORDER_CONSTANT ,value=0, mask_value=None), A.Resize(height, width) ]
         
+    augmentation_pipeline = A.Compose(transforms, params)
+    agumented = augmentation_pipeline(image = image, masks = mask, bboxes=bbox, bbox_ids=np.arange(len(bbox)) )
+    image = agumented['image']
+    segmentations = agumented['masks']
+    detections  = agumented['bboxes']
+    bbox_ids = agumented['bbox_ids']
 
-      
+    categories= categories[bbox_ids]
+    segmentations = [segmentations[x] for x in bbox_ids]
+
     return   image,  segmentations, detections, categories
 
 def minimize_mask(mask, bbox, minimask_shape):
