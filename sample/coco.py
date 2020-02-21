@@ -9,7 +9,6 @@ from random import randrange
 from config import system_configs
 from utils import crop_image, normalize_, color_jittering_, lighting_
 from .utils import random_crop, draw_gaussian, gaussian_radius
-from models.bbox_transform import crop_and_resize
 from pycocotools import mask as maskUtils
 from .visualize import display_instances, display_images
 from PIL import Image
@@ -22,17 +21,19 @@ def _get_border(border, size):
     return border // i 
 
 def crop_img(image, parms):
+    
     o_height, o_width ,height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h = parms
     cropped_ctx, cropped_cty = width // 2, height // 2
     x_slice = slice(cropped_ctx - left_w, cropped_ctx + right_w)
     y_slice = slice(cropped_cty - top_h, cropped_cty + bottom_h)               
     cropped_image = np.zeros((height, width, image.shape[2]), dtype=image.dtype)
-    cropped_image[y_slice, x_slice, :] = image[y0:y1, x0:x1, :]
-
+    cimg =  image[y0:y1, x0:x1, :]
+    cropped_image[y_slice, x_slice, :] = cimg
     return cropped_image
 
 
 def crop_box(bbox,parms):
+    parms = [int(i) for i in parms]
     o_height, o_width , height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h  = parms
     cropped_detections = bbox.copy()
     cropped_ctx, cropped_cty = width // 2, height // 2
@@ -45,11 +46,10 @@ def crop_box(bbox,parms):
 def data_augs(image,masks ,bbox, categories, height, width, border, rand_crop, rand_scales, debug ):
     
     categories = np.expand_dims(categories, axis=1)   
-    masks = np.array(masks).transpose((1,2,0))
-     
-    bbox = np.array(bbox)
-    bbox[:,2] += bbox[:,0]
-    bbox[:,3] += bbox[:,1]
+    segmentations = np.array(masks).transpose((1,2,0))
+    detections = np.array(bbox)
+    detections[:,2] += detections[:,0]
+    detections[:,3] += detections[:,1]
     
     if not debug and rand_crop:
         o_height, o_width = height, width
@@ -67,13 +67,12 @@ def data_augs(image,masks ,bbox, categories, height, width, border, rand_crop, r
         top_h, bottom_h = cty - y0, y1 - cty
         parms_sc = [o_height, o_width , height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h]        
         image = crop_img(image, parms =parms_sc)
-        segmentations = crop_img(masks, parms =parms_sc)
-        detections = crop_box(np.array(bbox),parms =parms_sc)
+        segmentations = crop_img(segmentations, parms =parms_sc)
+        detections = crop_box(detections, parms =parms_sc)
     else:
-        image, detections,segmentations = _full_image_crop(image, detections,masks)
+        image, detections,segmentations = _full_image_crop(image, detections,segmentations)
         
     if not debug and np.random.uniform() > 0.5:
-        segmentations = segmentations.copy()
         image[:] = image[:, ::-1, :]
         width    = image.shape[1]
         detections[:, [0, 2]] = width - detections[:, [2, 0]] - 1
@@ -99,13 +98,14 @@ def minimize_mask(mask, bbox, minimask_shape):
 def mask_keeps(detections, segmentations):
     """
     """
+    keeps =[]
     segmentations = segmentations.copy()
     n_seg = segmentations.shape[0]
-    s =segmentations.reshape(n_seg, -1)
-    keeps = np.nonzero(np.sum(segmentations.reshape(n_seg, -1), axis=1)>0)
+    if n_seg > 0:
+        s =segmentations.reshape(n_seg, -1)
+        keeps = np.nonzero(np.sum(s, axis=1)>0)
     return detections[keeps], segmentations[keeps]
     
-     
     
 def annToRLE(h,w, segm):
     """
@@ -145,21 +145,18 @@ def _resize_image(image, detections, segmentations,size):
 
     detections    = detections.copy()
     segmentations = segmentations.copy()
-
+    d = segmentations.dtype
     height, width = image.shape[0:2]
     new_height, new_width = size
     image = cv2.resize(image, (new_width, new_height))
-    try:
-        segmentations = cv2.resize(segmentations, (new_width, new_height))
-    except:
-        print("here")
+    segmentations = cv2.resize(segmentations.astype(np.float32), (new_width, new_width))
     height_ratio = new_height / height
     width_ratio  = new_width  / width
     detections[:, 0:4:2] *= width_ratio
     detections[:, 1:4:2] *= height_ratio
-    if len(segmentations.shape) <3:
+    if len(segmentations.shape) < 3:
         segmentations=np.expand_dims(segmentations, 2)    
-    return image, detections, segmentations
+    return image, detections, segmentations.astype(d)
 
 
 def _clip_detections(image, detections, segmentations):
@@ -172,6 +169,8 @@ def _clip_detections(image, detections, segmentations):
 
     keep_inds  = ((detections[:, 2] - detections[:, 0]) >= 1) & \
                  ((detections[:, 3] - detections[:, 1]) >= 1)
+    
+#     print(detections.shape, segmentations.shape)
     detections = detections[keep_inds]
     segmentations = segmentations[keep_inds]
   
@@ -461,7 +460,6 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         # reading detections
         detections, categories = db.detections(db_ind)
         segmentations = db.segmentations(db_ind)
-        print(len(segmentations))
         segs= []
         for  rle in segmentations:
             if rle:
@@ -470,7 +468,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             else:
                 segs.append(np.zeros((image.shape[0], image.shape[1]), dtype=np.int8) )
                 
-        image,  segmentations, detections, categories  = data_augs(image, segs ,detections, categories, input_size[0], input_size[1], border, True,rand_scales,debug)
+        image,  segmentations, detections, categories  = data_augs(image, segs ,detections, categories, input_size[0], input_size[1], border, rand_crop,rand_scales,debug)
 
         image, detections , segmentations = _resize_image(image, detections, segmentations, input_size)
         
@@ -478,7 +476,6 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         if detections.shape[0] >0:
             detections = np.concatenate((np.array(detections), categories), axis=1)
             segmentations_ = segmentations
-#             print(segmentations_.shape)
             segmentations=segmentations_.transpose((2, 0, 1))
             detections, segmentations  = _clip_detections(image, detections, segmentations)
             mask_dets, segmentations = mask_keeps(detections, segmentations)
