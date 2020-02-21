@@ -43,7 +43,7 @@ def crop_image(image, center, size):
     cty, ctx            = center
     height, width       = size
     im_height, im_width = image.shape[0:2]
-    cropped_image       = np.zeros((height, width, 3), dtype=image.dtype)
+    cropped_image       = np.zeros((height, width, image.shape[2]), dtype=image.dtype)
 
     x0, x1 = max(0, ctx - width // 2), min(ctx + width // 2, im_width)
     y0, y1 = max(0, cty - height // 2), min(cty + height // 2, im_height)

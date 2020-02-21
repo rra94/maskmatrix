@@ -281,9 +281,10 @@ class MatrixNetAnchorsLoss(nn.Module):
             
 #             save_image(gt_masks_all_layers.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_after.jpg",5)
 #             save_image(pred_masks.float().unsqueeze(1),  "./imgs/pred+" + str(i) + "_after.jpg",5)
-#             time.sleep(10)
-            mask_loss += F.binary_cross_entropy(pred_masks, gt_masks_all_layers)
 
+            mask_loss += F.binary_cross_entropy(pred_masks, gt_masks_all_layers)
+            
+#             time.sleep(10)
             
         if numr > 0:
             corner_regr_loss = corner_regr_loss / numr
@@ -297,7 +298,7 @@ class MatrixNetAnchorsLoss(nn.Module):
 loss = MatrixNetAnchorsLoss()
 
 def _decode(
-    anchors_heats, corners_tl_regrs, corners_br_regrs,
+    anchors_heats, corners_tl_regrs, corners_br_regrs,all_pred_masks,
     K=100, kernel=1, dist_threshold=0.2, num_dets=1000,layers_range = None,
     output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
 ):
@@ -319,7 +320,11 @@ def _decode(
 
         anchors_ys = anchors_ys.view(batch, K, 1)
         anchors_xs = anchors_xs.view(batch, K, 1)
-
+        
+        xc = seg_inds[ind] % outs[0][ind].shape[3]
+        yc = seg_inds[ind] // outs[0][ind].shape[3]
+        (xc).unsqueeze(2), 
+                
 
             
         if corners_br_regr is not None:
