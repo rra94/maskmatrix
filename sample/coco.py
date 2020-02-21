@@ -13,10 +13,7 @@ from models.bbox_transform import crop_and_resize
 from pycocotools import mask as maskUtils
 from .visualize import display_instances, display_images
 from PIL import Image
-import albumentations as A
-from pdb import set_trace as bp
 import time
-from functools import partial
 
 def _get_border(border, size):
     i = 1
@@ -24,83 +21,63 @@ def _get_border(border, size):
         i *= 2
     return border // i 
 
-
-def crop_img(image, height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h):
+def crop_img(image, parms):
+    o_height, o_width ,height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h = parms
     cropped_ctx, cropped_cty = width // 2, height // 2
     x_slice = slice(cropped_ctx - left_w, cropped_ctx + right_w)
     y_slice = slice(cropped_cty - top_h, cropped_cty + bottom_h)               
-    cropped_image = np.zeros((height, width), dtype=image.dtype)
-    cropped_image[y_slice, x_slice] = image[y0:y1, x0:x1]
-
-    return cropped_image
-
-def crop_mask(mask, height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h):
-    cropped_ctx, cropped_cty = width // 2, height // 2
-    x_slice = slice(cropped_ctx - left_w, cropped_ctx + right_w)
-    y_slice = slice(cropped_cty - top_h, cropped_cty + bottom_h)               
-
-    cropped_image = np.zeros((height, width), dtype=image.dtype)
-    cropped_image[y_slice, x_slice] = image[y0:y1, x0:x1]
+    cropped_image = np.zeros((height, width, image.shape[2]), dtype=image.dtype)
+    cropped_image[y_slice, x_slice, :] = image[y0:y1, x0:x1, :]
 
     return cropped_image
 
 
-
-def crop_box(bbox,height,width,x0,y0, left_w, top_h):
-    cropped_detections = box
+def crop_box(bbox,parms):
+    o_height, o_width , height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h  = parms
+    cropped_detections = bbox.copy()
     cropped_ctx, cropped_cty = width // 2, height // 2
-    cropped_detections[0] -= x0
-    cropped_detections[1] -= y0
-    cropped_detections[0] += cropped_ctx - left_w
-    cropped_detections[1] += cropped_cty - top_h
-    cropped_detections[2] -= x0
-    cropped_detections[3] -= y0
-    cropped_detections[2] += cropped_ctx - left_w
-    cropped_detections[3] += cropped_cty - top_h
+    cropped_detections[:,0::2] -= x0
+    cropped_detections[:,1::2] -= y0
+    cropped_detections[:,0::2] += cropped_ctx - left_w
+    cropped_detections[:,1::2] += cropped_cty - top_h
     return cropped_detections
     
-def data_augs(image,mask ,bbox, categories, height, width, border, rand_crop, rand_scales, debug ):
+def data_augs(image,masks ,bbox, categories, height, width, border, rand_crop, rand_scales, debug ):
     
+    categories = np.expand_dims(categories, axis=1)   
+    masks = np.array(masks).transpose((1,2,0))
+     
+    bbox = np.array(bbox)
+    bbox[:,2] += bbox[:,0]
+    bbox[:,3] += bbox[:,1]
     
-    params = A.BboxParams(format="coco", label_fields=["bbox_ids"])
-    categories = np.expand_dims(categories, axis=1)      
-        
     if not debug and rand_crop:
-        
-      
+        o_height, o_width = height, width
         image_height, image_width = image.shape[:2]
         scale  = np.random.choice(rand_scales)
         height = int(height * scale)
         width  = int(width  * scale)
-
         w_border = _get_border(border, image_width)
         h_border = _get_border(border, image_height)
-
         ctx = np.random.randint(low=w_border, high=image_width - w_border)
         cty = np.random.randint(low=h_border, high=image_height - h_border)
-
         x0, x1 = max(ctx - width // 2, 0),  min(ctx + width // 2, image_width)
         y0, y1 = max(cty - height // 2, 0), min(cty + height // 2, image_height)
-
         left_w, right_w = ctx - x0, x1 - ctx
         top_h, bottom_h = cty - y0, y1 - cty
-
-        transforms=[A.Lambda( image=partial(crop_img,height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h) ,mask=partial(crop_mask,height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h) ,bbox = partial(crop_box,height,width,x0,y0, left_w, top_h)), A.Resize(height, width) ]
-
+        parms_sc = [o_height, o_width , height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h]        
+        image = crop_img(image, parms =parms_sc)
+        segmentations = crop_img(masks, parms =parms_sc)
+        detections = crop_box(np.array(bbox),parms =parms_sc)
     else:
-        image_height, image_width = image.shape[:2]
-        hw = max(image_height, image_height)
-        transforms = [A.HorizontalFlip(p = 0.5),A.PadIfNeeded(hw,hw, cv2.BORDER_CONSTANT ,value=0, mask_value=None), A.Resize(height, width) ]
+        image, detections,segmentations = _full_image_crop(image, detections,masks)
         
-    augmentation_pipeline = A.Compose(transforms, params)
-    agumented = augmentation_pipeline(image = image, masks = mask, bboxes=bbox, bbox_ids=np.arange(len(bbox)) )
-    image = agumented['image']
-    segmentations = agumented['masks']
-    detections  = agumented['bboxes']
-    bbox_ids = agumented['bbox_ids']
-
-    categories= categories[bbox_ids]
-    segmentations = [segmentations[x] for x in bbox_ids]
+    if not debug and np.random.uniform() > 0.5:
+        segmentations = segmentations.copy()
+        image[:] = image[:, ::-1, :]
+        width    = image.shape[1]
+        detections[:, [0, 2]] = width - detections[:, [2, 0]] - 1
+        segmentations = segmentations[:, ::-1, :]
 
     return   image,  segmentations, detections, categories
 
@@ -116,57 +93,25 @@ def minimize_mask(mask, bbox, minimask_shape):
         if m.size == 0:
             print("Invalid bounding box with area of zero")
         m = np.array(Image.fromarray(m).resize(minimask_shape))
-#         scipy.misc.imresize(m.astype(float), minimask_shape, interp='bilinear')
-#         print(m)
         mini_mask[i,:, :] = m
-#         print(m)
     return mini_mask
 
 def mask_keeps(detections, segmentations):
-#     print(segmentations.shape)
+    """
+    """
+    segmentations = segmentations.copy()
     n_seg = segmentations.shape[0]
     s =segmentations.reshape(n_seg, -1)
-#     print(s.shape)
     keeps = np.nonzero(np.sum(segmentations.reshape(n_seg, -1), axis=1)>0)
-    #     print(keeps)
     return detections[keeps], segmentations[keeps]
     
-    
-
-def masks_to_dets(cats, masks):
-#     print(cats)
-    bboxes = []
-    masks_final = []
-    
-    for i,m in enumerate(masks):
-#         print(m,i)
-#         if m.any() and m.shape[0]>1:
-        print(m)
-        print(m.shape)
-        print(type(m))
-        if m.size<=6:
-            continue
-#         print(m)
-#         print("\----------",m[:,0::2])
-#         time.sleep(60)
-        x1 = np.amin(m[:,0::2])
-        y1 = np.amin(m[:,1::2])
-        x2 = np.amax(m[:,0::2])
-        y2 = np.amax(m[:,1::2])
-        if abs(x2-x1) >1 and abs(y2-y1) > 1 :
-            bboxes.append([x1,y1,x2,y2,cats[i].item()])
-            masks_final.append(m)
-    
-    bboxes = np.array(bboxes)
-    return bboxes, masks_final
-        
+     
     
 def annToRLE(h,w, segm):
     """
     Convert annotation which can be polygons, uncompressed RLE to RLE.
     :return: binary mask (numpy 2D array)
    """
-
     if type(segm) == list:
         # polygon -- a single object might consist of multiple parts
         # we merge all parts into one mask rle code
@@ -182,68 +127,54 @@ def annToRLE(h,w, segm):
     
 def _full_image_crop(image, detections,segmentations):
     detections    = detections.copy()
-    segmentations = [seg.copy() for seg in segmentations]
+    segmentations = segmentations.copy()
+
     height, width = image.shape[0:2]
-        
     max_hw = max(height, width)
     center = [height // 2, width // 2]
     size   = [max_hw, max_hw]
-    
     image, border, offset = crop_image(image, center, size)
+    segmentations, _, _ = crop_image(segmentations, center, size)
     detections[:, 0:4:2] += border[2]
     detections[:, 1:4:2] += border[0]
-    for seg in segmentations:
-        if seg.size<=6:
-            continue
-        seg[:,0::2] += border[2] 
-        seg[:,1::2] += border[0] 
 
     return image, detections, segmentations
 
 
-def _resize_image(image, detections, size, segmentations):
-    detections    = detections.copy()
-    segmentations = [seg.copy() for seg in segmentations]
-    height, width = image.shape[0:2]
-#     print(height, width, "")
-    new_height, new_width = size
+def _resize_image(image, detections, segmentations,size):
 
+    detections    = detections.copy()
+    segmentations = segmentations.copy()
+
+    height, width = image.shape[0:2]
+    new_height, new_width = size
     image = cv2.resize(image, (new_width, new_height))
+    try:
+        segmentations = cv2.resize(segmentations, (new_width, new_height))
+    except:
+        print("here")
     height_ratio = new_height / height
     width_ratio  = new_width  / width
     detections[:, 0:4:2] *= width_ratio
     detections[:, 1:4:2] *= height_ratio
-# #     print(segmentations[1])
-    for seg in segmentations:
-        if seg.size <= 6 :
-            continue
-
-        seg[:,0::2] *= width_ratio 
-        seg[:,1::2] *= height_ratio 
-
-    
+    if len(segmentations.shape) <3:
+        segmentations=np.expand_dims(segmentations, 2)    
     return image, detections, segmentations
 
 
 def _clip_detections(image, detections, segmentations):
     detections    = detections.copy()
+    segmentations = segmentations.copy()
     height, width = image.shape[0:2]
 
     detections[:, 0:4:2] = np.clip(detections[:, 0:4:2], 0, width - 1)
     detections[:, 1:4:2] = np.clip(detections[:, 1:4:2], 0, height - 1)
-    
-#     for seg in segmentations:
-#         if seg.size <= 6:
-#             continue
-#         seg[:, 0::2] = np.clip(seg[:, 0::2], 0, width - 1)
-#         seg[:, 1::2] = np.clip(seg[:, 1::2], 0, height - 1)
 
     keep_inds  = ((detections[:, 2] - detections[:, 0]) >= 1) & \
                  ((detections[:, 3] - detections[:, 1]) >= 1)
-#     print(keep_inds)
     detections = detections[keep_inds]
     segmentations = segmentations[keep_inds]
-    
+  
     return detections, segmentations
 
 
@@ -515,13 +446,11 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     tag_lens    = [np.zeros((batch_size, ), dtype=np.int32) for output_size in output_sizes]
     
     
-#     db_size = db.db_inds.size
-    db_size = 10
-    
+    db_size = db.db_inds.size    
 
     for b_ind in range(batch_size):
-#         if not debug and k_ind == 0:
-#             db.shuffle_inds()
+        if not debug and k_ind == 0:
+            db.shuffle_inds()
 
         db_ind = db.db_inds[k_ind]
         k_ind  = (k_ind + 1) % db_size
@@ -529,10 +458,10 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
         image_file = db.image_file(db_ind)
         image      = cv2.imread(image_file)
         
-        
         # reading detections
         detections, categories = db.detections(db_ind)
         segmentations = db.segmentations(db_ind)
+        print(len(segmentations))
         segs= []
         for  rle in segmentations:
             if rle:
@@ -541,34 +470,24 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             else:
                 segs.append(np.zeros((image.shape[0], image.shape[1]), dtype=np.int8) )
                 
+        image,  segmentations, detections, categories  = data_augs(image, segs ,detections, categories, input_size[0], input_size[1], border, True,rand_scales,debug)
 
-        image,  segmentations, detections, categories  = data_augs(image, segs ,detections, categories, input_size[0], input_size[1], border, False,rand_scales,debug)
-
-    
-        detections = np.array(detections)
+        image, detections , segmentations = _resize_image(image, detections, segmentations, input_size)
+        
         mask_dets = []
         if detections.shape[0] >0:
-            detections[:, 2] +=detections[:,0]
-            detections[:, 3] +=detections[:,1]
             detections = np.concatenate((np.array(detections), categories), axis=1)
-            segmentations_ = np.stack(segmentations, axis=2).astype(np.bool)
+            segmentations_ = segmentations
+#             print(segmentations_.shape)
             segmentations=segmentations_.transpose((2, 0, 1))
-
-#             print(0, detections.shape, segmentations.shape )
-
             detections, segmentations  = _clip_detections(image, detections, segmentations)
-#             print(2, detections.shape, segmentations.shape )
-
             mask_dets, segmentations = mask_keeps(detections, segmentations)
             segmentations = minimize_mask(segmentations, mask_dets, minimask_shape)
         
-        
-#             print(3, mask_dets.shape, segmentations.shape )
-
+    
 #             display_instances(image, detections, segmentations_, detections[:,-1], "/home/rragarwal4/matrixnet/imgs/", str(db_ind)+"_reformatted.jpg")
 
-                             
-#         display_instances(image, np.array(mask_dets), segmentations_, np.array(mask_dets[:,-1]), "/home/rragarwal4/matrixnet/imgs/", str(db_ind)+"_reformatted.jpg")
+
 
         if not debug:
             image = image.astype(np.float32) / 255.
@@ -576,6 +495,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 color_jittering_(data_rng, image)
                 if lighting:
                     lighting_(data_rng, image, 0.1, db.eig_val, db.eig_vec)
+        
         images[b_ind] = image.transpose((2, 0, 1))
         
         dets = []
@@ -593,10 +513,6 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 
                 width_ratio = output_sizes[olayer_idx][1] / input_size[1]
                 height_ratio = output_sizes[olayer_idx][0] / input_size[0]
-                
-               # if categories ==1:
-                #    category = 0 
-                #else:
                 
                 category = 0
                 xtl, ytl = detection[0], detection[1]
@@ -646,12 +562,10 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
             detections_batch[b_ind][:len(dets),:] = np.array(dets)
         else:
             print("zero dets in image")
-#         print(msks)
         if len(msks) > 0:
             msks = np.vstack(msks)
             segmentations_batch[b_ind][:len(msks),:,:] = msks
             m_dets= np.array(m_dets)
-#             print(m_dets.shape)
             mask_detections_batch[b_ind][:len(m_dets),:] = m_dets
         else:
             print("zero seg in image")
