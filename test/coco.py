@@ -515,18 +515,19 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1],debug_dir+"/" ,str(ind)+"_wmasks.jpg" )
             
             #print(debug_file)
-            cv2.imwrite(debug_file,image)
+#             cv2.imwrite(debug_file,image)
 
     result_json = os.path.join(result_dir, "results.json")
 
-    detections  = db.convert_to_coco(top_bboxes)
-    with open(result_json, "w") as f:
-        json.dump(detections, f)
-    #result_json="home/rragarwal4/new/keras-retinanet/val2017_bbox_results.json"
-    print(result_json)
+    detections  = db.convert_to_coco(top_bboxes, top_masks)
+#     pdb.set_trace()
+#     with open(result_json, "w") as f:
+#         json.dump(detections, f)
+#     #result_json="home/rragarwal4/new/keras-retinanet/val2017_bbox_results.json"
+#     print(result_json)
     cls_ids   = list(range(1, categories + 1))
     image_ids = [db.image_ids(ind) for ind in db_inds]
-    db.evaluate(result_json, cls_ids, image_ids)
+    db.evaluate_boxes(detections, cls_ids, image_ids)
     return 0
 
     

@@ -154,16 +154,16 @@ class MSCOCO(DETECTION):
     def _to_float(self, x):
         return float("{:.2f}".format(x))
 
-    def convert_to_coco(self, all_bboxes):
+    def convert_to_coco(self, all_bboxes, all_masks):
         detections = []
         for image_id in all_bboxes:
             coco_id = self._coco_eval_ids[image_id]
             for cls_ind in all_bboxes[image_id]:
                 category_id = self._classes[cls_ind]
-                for bbox in all_bboxes[image_id][cls_ind]:
+                for i,bbox in enumerate(all_bboxes[image_id][cls_ind]):
                     bbox[2] -= bbox[0]
                     bbox[3] -= bbox[1]
-
+                    mask = all_masks[image_id][cls_ind][i, :, :]
                     score = bbox[4]
                     bbox  = list(map(self._to_float, bbox[0:4]))
 
@@ -171,12 +171,16 @@ class MSCOCO(DETECTION):
                         "image_id": coco_id,
                         "category_id": category_id,
                         "bbox": bbox,
+                        "segmentation": maskUtils.encode(np.asfortranarray(mask.astype(np.uint8))),
                         "score": float("{:.2f}".format(score))
                     }
 
                     detections.append(detection)
         return detections
+    
 
+    
+    
     def convert_to_numpy(self, all_bboxes):
        detections = []
        for image_id in all_bboxes:
@@ -222,7 +226,7 @@ class MSCOCO(DETECTION):
         return coco_eval.stats
     
 
-    def evaluate(self, result_json, cls_ids, image_ids, gt_json=None):
+    def evaluate_boxes(self, result_json, cls_ids, image_ids, gt_json=None):
         if self._split == "testdev":
             return None
 
@@ -231,11 +235,13 @@ class MSCOCO(DETECTION):
         eval_ids = [self._coco_eval_ids[image_id] for image_id in image_ids]
         cat_ids  = [self._classes[cls_id] for cls_id in cls_ids]
         coco_dets = coco.loadRes(result_json)
-        coco_eval = COCOeval(coco, coco_dets, "bbox")
-        coco_eval.params.imgIds = eval_ids
-        coco_eval.params.catIds = cat_ids
-        coco_eval.evaluate()
-        coco_eval.accumulate()
-        coco_eval.summarize()
-        return coco_eval.stats[0], coco_eval.stats[12:]
+#         coco_eval_boxes = COCOeval(coco, coco_dets, "bbox")
+        coco_eval_boxes = COCOeval(coco, coco_dets)
+        coco_eval_boxes.params.imgIds = eval_ids
+        coco_eval_boxes.params.catIds = cat_ids
+        coco_eval_boxes.evaluate()
+        coco_eval_boxes.accumulate()
+        coco_eval_boxes.summarize()
+        
+        return coco_eval_boxes.stats[0], coco_eval_boxes.stats[12:]
 
