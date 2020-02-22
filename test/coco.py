@@ -290,7 +290,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     scales        = db.configs["test_scales"]
     weight_exp    = db.configs["weight_exp"]
     merge_bbox    = db.configs["merge_bbox"]
-    categories    = db.configs["categories"]-1
+    categories    = db.configs["categories"]
     nms_threshold = db.configs["nms_threshold"]
     max_per_image = db.configs["max_per_image"]
     layers_range = db.configs["layers_range"]

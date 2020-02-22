@@ -313,6 +313,7 @@ def _decode(
     for b_ind in range(batch):
         layer_dets =[]
         masks_dets_in_layer = []
+        boxes_without_scaling_layer = []
         for i in range(len(anchors_heats)):
             anchors_heat = anchors_heats[i][b_ind]
             corners_tl_regr = corners_tl_regrs[i][b_ind]
@@ -322,6 +323,7 @@ def _decode(
             cat, height, width = anchors_heat.size()
             height_scale = height_0 / height
             width_scale = width_0 / width
+            
             K = min(K,height*width)
             anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K )
 #             print(anchors_scores.shape)
@@ -347,11 +349,11 @@ def _decode(
             mask_x1 = (anchors_xs - max_x)
             mask_y1 = (anchors_ys - max_y)
             mask_x2 = (anchors_xs + max_x)
-            mask_y1 = (anchors_ys + max_y)
+            mask_y2 = (anchors_ys + max_y)
 
             layer_name  = torch.tensor([i]).repeat(mask_x1.shape[0],1).type_as(mask_x1)
             
-            mask_bboxes =  torch.cat((mask_x1, mask_y1, mask_x2, mask_y1,layer_name), dim=1)
+            mask_bboxes =  torch.cat((mask_x1, mask_y1, mask_x2, mask_y2,layer_name), dim=1)
            
             width_inds  = (br_xs < tl_xs)
             height_inds = (br_ys < tl_ys)
@@ -371,7 +373,10 @@ def _decode(
             
             clses  = anchors_clses.contiguous().view(-1, 1)
             clses  = _gather_feat(clses, inds).float()
-
+            
+            boxes_without_scaling =  torch.cat([bboxes, scores,scores,layer_name, clses], dim=1)
+           
+            
             bboxes[:, 0] *= width_scale
             bboxes[:, 1] *= height_scale
             bboxes[:, 2] *= width_scale
@@ -379,29 +384,32 @@ def _decode(
             
             dets_in_layer = torch.cat([bboxes, scores,scores,layer_name, clses], dim=1)
             layer_dets.append(dets_in_layer)
+            boxes_without_scaling_layer.append(boxes_without_scaling)
             masks_dets_in_layer.append(mask_bboxes)
                 
         detections = torch.cat(layer_dets, dim = 0)
         mask_bboxes = torch.cat(masks_dets_in_layer, dim = 0)
-        
+        boxes_without_scaling  =torch.cat(boxes_without_scaling_layer, dim = 0)
         top_scores, top_inds = torch.topk(detections[:, 4], 300)
+        
         
         mask_bboxes = _gather_feat(mask_bboxes, top_inds)
         dets = _gather_feat(detections, top_inds)
+        boxes_without_scaling =  _gather_feat(boxes_without_scaling, top_inds)
         detections_batch.append(dets)
-        
-        dets[:, 0] /= width_scale
-        dets[:, 1] /= height_scale
-        dets[:, 2] /= width_scale
-        dets[:, 3] /= height_scale
-        
-        target_classes = dets[:, -1]
+
         
         _, mask_inds = torch.topk(mask_bboxes[:, -1], mask_bboxes.size(0))
         mask_bboxes = _gather_feat(mask_bboxes, mask_inds)
         
         _, det_inds = torch.topk(dets[:, 6], dets.size(0))
-        dets = _gather_feat(dets, mask_inds)
+        dets = _gather_feat(dets, det_inds)
+        boxes_without_scaling = _gather_feat(boxes_without_scaling, det_inds)
+#         boxes_without_scaling[:,0:4] = boxes_without_scaling[:, 0:4]*36
+        
+        target_classes = dets[:, -1]
+
+
         
         all_pred_masks = []
         
@@ -422,18 +430,28 @@ def _decode(
         y_onehot=torch.nonzero(y_onehot.view(-1))  
 #         pdb.set_trace()
         all_pred_masks = all_pred_masks.view(-1, all_pred_masks.shape[2],all_pred_masks.shape[3])[y_onehot,:,:].squeeze(1)
-        _, h,w = all_pred_masks.shape                                              
-        all_pred_masks = crop_and_resize (all_pred_masks, dets ,h)                                        
+        _, h,w = all_pred_masks.shape              
+        save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "bc_predicted.jpg",5)
+        
+        
+        boxes_without_scaling[:,0:2] -= mask_bboxes[:,0:2]
+        boxes_without_scaling[:,2:4] -= mask_bboxes[:,0:2]
+        dh = mask_bboxes[:,2:3]-mask_bboxes[:, 0:1]#+1e-10
+        dw = mask_bboxes[:,3:4]-mask_bboxes[:, 1:2]#+1e-10 
+        norm_boxes = torch.cat([36*boxes_without_scaling[:, 0:1]/dh,36*boxes_without_scaling[:, 1:2]/dw ,36*boxes_without_scaling[:, 2:3]/dh,36*boxes_without_scaling[:, 3:4]/dw ] ,dim=1).clone().detach()
+        
+        
+        all_pred_masks = crop_and_resize (all_pred_masks, norm_boxes ,h)                                     
+        save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "ac_predicted.jpg",5)
         predmask_batch.append(all_pred_masks)
-        save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_predicted.jpg",5)
-    
+        
     predmask_batch = torch.cat(predmask_batch, dim =0)
 #     print(predmask_batch.shape, batch)
     detections_batch = torch.cat(detections_batch, dim =0)
    
     predmask_batch = predmask_batch.view(batch, -1, predmask_batch.shape[-2], predmask_batch.shape[-1])
     detections_batch = detections_batch.view(batch, -1, detections_batch.shape[-1])
-    pdb.set_trace()
+#     pdb.set_trace()
     return detections_batch,predmask_batch
                                                       
             
