@@ -514,12 +514,12 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     
     
 #     db_size = db.db_inds.size
-    db_size = 10
+#     db_size = 10
     
 
     for b_ind in range(batch_size):
-#         if not debug and k_ind == 0:
-#             db.shuffle_inds()
+        if not debug and k_ind == 0:
+            db.shuffle_inds()
 
         db_ind = db.db_inds[k_ind]
         k_ind  = (k_ind + 1) % db_size

@@ -1,11 +1,11 @@
 {
     "system": {
         "dataset": "MSCOCO",
-        "batch_size": 4,
+        "batch_size": 20,
         "sampling_function": "anchors_detection_matrixnets",
 	"model_name": "MatrixNetAnchors",
 
-        "train_split": "val2017",
+        "train_split": "train2017",
         "val_split": "val2017",
 
         "learning_rate": 0.00005,
@@ -20,18 +20,18 @@
         "stepsize": 130000,
         "snapshot": 5000,
 
-        "chunk_sizes": [2,2],
-        "cache_dir" : "/scratch/hdd001/home/arashwan/experiments/MxNetAnchorsResnet50_48LayerRange_768isize",
+        "chunk_sizes": [5,5,5,5],
+        "cache_dir" : "/scratch/hdd001/home/arashwan/experiments/FastMxNetAnchorsResnet50_48LayerRange_768isize",
 	"data_dir": "./data/"
     },
 
     "db": {
         "rand_scale_min": 0.6,
-        "rand_scale_max": 1.0,
+        "rand_scale_max": 1.4,
         "rand_scale_step": 0.1,
         "rand_scales": null,
 
-        "rand_crop": false,
+        "rand_crop": true,
         "rand_color": true,
 
         "border": 128,
@@ -59,7 +59,7 @@
 	
         "test_scales": [1],
 	
-        "categories":81,
+        "categories":80,
 	"test_image_max_dim":640,
 	"test_flip_images":false,
         "nms_threshold": 0.5,
