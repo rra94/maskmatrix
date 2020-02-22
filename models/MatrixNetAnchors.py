@@ -407,7 +407,7 @@ def _decode(
 #         boxes_without_scaling =  _gather_feat(boxes_without_scaling, top_inds)
         
         #nms
-        keeps = nms(detections[:,1:5],detections[:, 4], iou_threshold=0.5)
+        keeps = nms(detections[:,:4],detections[:, 4], iou_threshold=0.5)
         keeps=keeps[:300]
         dets =_gather_feat(detections, keeps)
         boxes_without_scaling =  _gather_feat(boxes_without_scaling, keeps)
@@ -443,7 +443,7 @@ def _decode(
 #         pdb.set_trace()
         all_pred_masks = all_pred_masks.view(-1, all_pred_masks.shape[2],all_pred_masks.shape[3])[y_onehot,:,:].squeeze(1)
         _, h,w = all_pred_masks.shape              
-        save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "bc_predicted.jpg",5)
+#         save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "bc_predicted.jpg",5)
         
         
         boxes_without_scaling[:,0:2] -= mask_bboxes[:,0:2]
@@ -452,7 +452,7 @@ def _decode(
         norm_boxes = (36. - 1.) / (9. - 1.) * boxes_without_scaling[:,:4] # multiplying by the box upsampling ratios (2 deconvs)
         
         all_pred_masks = crop_and_resize (all_pred_masks, norm_boxes ,h)                                     
-        save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "ac_predicted.jpg",5)
+#         save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "ac_predicted.jpg",5)
         predmask_batch.append(all_pred_masks)
         
     predmask_batch = torch.cat(predmask_batch, dim =0)

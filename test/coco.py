@@ -424,7 +424,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             fmasks=[]
             fbboxes =[]
             for j in range(categories, 0, -1):
-                keep_inds = (top_bboxes[image_id][j][:, -1] > 0.5)
+                keep_inds = (top_bboxes[image_id][j][:, -1] > 0.4)
 #                     print(keep_inds)
                 cat_name  = db.class_name(j)
                 cat_size  = cv2.getTextSize(cat_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
