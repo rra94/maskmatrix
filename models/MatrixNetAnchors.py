@@ -299,36 +299,29 @@ class model(nn.Module):
         bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,4:5] #score
         bboxes_for_masks[:,:,1:5] = bboxes_decoded[:,:,0:4]*8 #bbox cords
         bboxes_for_masks[:,:,5:6] = bboxes_decoded[:,:,7:8] #classes
-        bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer
-        
-#         print("-----",bboxes_for_masks[0][1:100])
-#         bboxes_for_masks_post_nms = bboxes_for_masks.new(batch_size, 100, 7 ).zero_()
-        
-#         bboxes_decoded_post_nms = bboxes_decoded.new(batch_size, 100, 8 ).zeros_()
-
-#         for b_ind in batch_size:
-#             keeps = ops.nms(bboxes_for_masks[bind][:,1:5], bboxes_for_masks[b_ind][:,5], iou_threshold=0.5)
-#             keeps = keeps[:100]
-#             bboxes_for_masks_post_nms[b_ind] = bboxes_for_masks[b_ind][keeps, :]
-#             bboxes_decoded_post_nms[b_ind] = bboxes_decoded_post_nms[b_ind][keeps, :]
-            
+        bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer        
         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features, bboxes_for_masks)       
-            
-#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks_post_nms)
-#         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features,bboxes_for_masks)
-        
+              
         pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
         masks_preds = masks_preds.view(batch_size, prenms_nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
 
-#         masks_preds = masks_preds.view(batch_size, prenms_nroi,self.MASK_SIZE ,self.MASK_SIZE, self.classes-1 )      
-#         mask_preds = mask_preds[:,:,:,bboxes_decoded_post_nms[:,:,5]]
-#         masks_preds = masks_preds[:,:,:,bboxes_for_masks[:,:,5].long()]
+        masks_preds_final =[]
         
-#         print(bboxes_for_masks.shape)\\
-
-
-        return bboxes_decoded, masks_preds
+        for b in range(batch_size):
+            preds_batch = masks_preds[b]
+            target_classes = bboxes_decoded[b][:,7].long().clone().detach()
+            y_onehot = torch.FloatTensor(preds_batch.shape[0], self.classes-1).type_as(target_classes)
+            y_onehot.zero_()
+            y_onehot.scatter_(1, target_classes.view(-1,1), 1)
+            y_onehot=torch.nonzero(y_onehot.view(-1))
+            preds_batch = preds_batch.view(-1, preds_batch.shape[2],preds_batch.shape[3])[y_onehot,:,:].squeeze(1)
+            masks_preds_final.append(preds_batch.unsqueeze(0).clone().detach())
+            save_image(preds_batch.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_predicted.jpg",5)
+     
+        masks_preds_final = torch.cat(masks_preds_final, dim =0)
+     
+        return bboxes_decoded, masks_preds_final
     
     def forward(self, *xs, **kwargs):
         if len(xs) > 1:
@@ -441,7 +434,7 @@ class MatrixNetAnchorsLoss(nn.Module):
                     y_true = target_masks[positive_ix]
                     y_pred = pred_masks[positive_ix]
 #                     print(y_true.shape)
-#                     save_image(y_true.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_after.jpg",5)
+                    save_image(y_true.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_after.jpg",5)
             
                     y_onehot = torch.FloatTensor(positive_class_ids.shape[0], nclasses).type_as(positive_class_ids)
                     y_onehot.zero_()
