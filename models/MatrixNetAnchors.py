@@ -8,7 +8,8 @@ from .resnet_features import resnet152_features, resnet50_features, resnet18_fea
 from .py_utils.utils import conv1x1, conv3x3
 from  torchvision.utils import save_image
 from .matrixnet import _sigmoid, MatrixNet, _gather_feat, _tranpose_and_gather_feat, _topk, _nms
-
+from .bbox_transform import bbox_overlaps_batch, bbox_transform_batch, crop_and_resize
+import pdb
 import time
 
 import torchvision.ops.roi_pool as roipool
@@ -186,7 +187,7 @@ class model(nn.Module):
                 pred_masks = roipool(outs[3][ind], dets, (2 * max_y + 1, 2 * max_x + 1))
             
             all_pred_masks[ind] = pred_masks
-            
+        print(all_pred_masks[0].shape)    
         if all_pred_masks.count(None) != len(all_pred_masks):
             all_pred_masks = self.Xmask(torch.cat([i for i in all_pred_masks if i != None], dim = 0))
         else:
@@ -199,7 +200,7 @@ class model(nn.Module):
         image = xs[0][0]
         
         outs = self.net.forward(image)
-        return self._decode(*outs, **kwargs)
+        return self._decode(*outs, self.Xmask, **kwargs)
 
     def forward(self, *xs, **kwargs):
         if len(xs) > 1:
@@ -244,7 +245,7 @@ class MatrixNetAnchorsLoss(nn.Module):
             floss, num = self.focal_loss([anchors_heats[i]], gt_anchors_heat[i])
             focal_loss += floss
             numf += num
-            
+#             print( gt_mask[i].shape)
             rloss, num = self.regr_loss(anchors_br_corners_regrs[i], gt_br_corners_regr[i], gt_mask[i])
             numr += num
             corner_regr_loss += rloss
@@ -279,12 +280,12 @@ class MatrixNetAnchorsLoss(nn.Module):
             
             pred_masks = pred_masks.view(-1, pred_masks.shape[2],pred_masks.shape[3])[y_onehot,:,:].squeeze(1)
             
-#             save_image(gt_masks_all_layers.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_after.jpg",5)
-#             save_image(pred_masks.float().unsqueeze(1),  "./imgs/pred+" + str(i) + "_after.jpg",5)
+            save_image(gt_masks_all_layers.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_after.jpg",5)
+            save_image(pred_masks.float().unsqueeze(1),  "./imgs/pred+" + str(i) + "_after.jpg",5)
 
             mask_loss += F.binary_cross_entropy(pred_masks, gt_masks_all_layers)
             
-#             time.sleep(10)
+#             time.sleep(2)
             
         if numr > 0:
             corner_regr_loss = corner_regr_loss / numr
@@ -298,86 +299,153 @@ class MatrixNetAnchorsLoss(nn.Module):
 loss = MatrixNetAnchorsLoss()
 
 def _decode(
-    anchors_heats, corners_tl_regrs, corners_br_regrs,all_pred_masks,
+    anchors_heats, corners_tl_regrs, corners_br_regrs,features, Xmask,
     K=100, kernel=1, dist_threshold=0.2, num_dets=1000,layers_range = None,
     output_kernel_size = None, output_sizes = None, input_size=None, base_layer_range=None
 ):
     top_k = K
     batch, cat, height_0, width_0 = anchors_heats[0].size()
+    min_y, max_y, min_x, max_x = map(lambda x:int(x/8/2), base_layer_range)
     
-    for i in range(len(anchors_heats)):
-        
-        
-        anchors_heat = anchors_heats[i]
-        corners_tl_regr = corners_tl_regrs[i]
-        corners_br_regr = corners_br_regrs[i]
-
-        batch, cat, height, width = anchors_heat.size()
-        height_scale = height_0 / height
-        width_scale = width_0 / width
+    detections_batch =[]
+    predmask_batch = []
     
-        anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K=K)
-
-        anchors_ys = anchors_ys.view(batch, K, 1)
-        anchors_xs = anchors_xs.view(batch, K, 1)
+    for b_ind in range(batch):
+        layer_dets =[]
+        masks_dets_in_layer = []
+        for i in range(len(anchors_heats)):
+            anchors_heat = anchors_heats[i][b_ind]
+            corners_tl_regr = corners_tl_regrs[i][b_ind]
+            corners_br_regr = corners_br_regrs[i][b_ind]
+#             print(anchors_heat.shape, corners_tl_regr.shape)
+            
+            cat, height, width = anchors_heat.size()
+            height_scale = height_0 / height
+            width_scale = width_0 / width
+            K = min(K,height*width)
+            anchors_scores, anchors_inds, anchors_clses, anchors_ys, anchors_xs = _topk(anchors_heat, K )
+#             print(anchors_scores.shape)
+            anchors_ys = anchors_ys.view(K, 1)
+            anchors_xs = anchors_xs.view(K, 1)
         
-        xc = seg_inds[ind] % outs[0][ind].shape[3]
-        yc = seg_inds[ind] // outs[0][ind].shape[3]
-        (xc).unsqueeze(2), 
+            if corners_br_regr is not None:
+                corners_tl_regr = _tranpose_and_gather_feat(corners_tl_regr, anchors_inds)
+                corners_tl_regr = corners_tl_regr.view(K, 1, 2)
+                corners_br_regr = _tranpose_and_gather_feat(corners_br_regr, anchors_inds)
+                corners_br_regr = corners_br_regr.view(K, 1, 2)
+
+                tl_xs = anchors_xs -  (((max_x - min_x) * corners_tl_regr[..., 0]) + (max_x + min_x)/2) 
+                tl_ys = anchors_ys -  (((max_y - min_y) * corners_tl_regr[..., 1]) + (max_y + min_y)/2)
+                br_xs = anchors_xs +  (((max_x - min_x) * corners_br_regr[..., 0]) + (max_x + min_x)/2)
+                br_ys = anchors_ys +  (((max_y - min_y) * corners_br_regr[..., 1]) + (max_y + min_y)/2)
+            
+#             print("yo", tl_xs.shape)
+            bboxes = torch.cat((tl_xs, tl_ys, br_xs, br_ys), dim=1)
+
+            scores    = anchors_scores.view(K, 1)
+            
+            mask_x1 = (anchors_xs - max_x)
+            mask_y1 = (anchors_ys - max_y)
+            mask_x2 = (anchors_xs + max_x)
+            mask_y1 = (anchors_ys + max_y)
+
+            layer_name  = torch.tensor([i]).repeat(mask_x1.shape[0],1).type_as(mask_x1)
+            
+            mask_bboxes =  torch.cat((mask_x1, mask_y1, mask_x2, mask_y1,layer_name), dim=1)
+           
+            width_inds  = (br_xs < tl_xs)
+            height_inds = (br_ys < tl_ys)
+
+            scores[width_inds]  = -1
+            scores[height_inds] = -1
+            scores = scores.view(-1)
+
+            scores, inds = torch.topk(scores, min(num_dets, scores.shape[0]))
+            scores = scores.unsqueeze(1)
+
+            bboxes = bboxes.view(-1, 4)
+            bboxes = _gather_feat(bboxes, inds)
+            mask_bboxes =  _gather_feat(mask_bboxes, inds)
+            
+            layer_name = layer_name[inds]
+            
+            clses  = anchors_clses.contiguous().view(-1, 1)
+            clses  = _gather_feat(clses, inds).float()
+
+            bboxes[:, 0] *= width_scale
+            bboxes[:, 1] *= height_scale
+            bboxes[:, 2] *= width_scale
+            bboxes[:, 3] *= height_scale
+            
+            dets_in_layer = torch.cat([bboxes, scores,scores,layer_name, clses], dim=1)
+            layer_dets.append(dets_in_layer)
+            masks_dets_in_layer.append(mask_bboxes)
                 
-
-            
-        if corners_br_regr is not None:
-            corners_tl_regr = _tranpose_and_gather_feat(corners_tl_regr, anchors_inds)
-            corners_tl_regr = corners_tl_regr.view(batch, K, 1, 2)
-            corners_br_regr = _tranpose_and_gather_feat(corners_br_regr, anchors_inds)
-            corners_br_regr = corners_br_regr.view(batch, K, 1, 2)
-            
-            min_y, max_y, min_x, max_x = map(lambda x:x/8/2,base_layer_range) #This is the range of object sizes within the layers 
-            # We devide by 2 since we want to compute the distances from center to corners.
-            
-            tl_xs = anchors_xs -  (((max_x - min_x) * corners_tl_regr[..., 0]) + (max_x + min_x)/2) 
-            tl_ys = anchors_ys -  (((max_y - min_y) * corners_tl_regr[..., 1]) + (max_y + min_y)/2)
-            br_xs = anchors_xs +  (((max_x - min_x) * corners_br_regr[..., 0]) + (max_x + min_x)/2)
-            br_ys = anchors_ys +  (((max_y - min_y) * corners_br_regr[..., 1]) + (max_y + min_y)/2)
-
-        bboxes = torch.stack((tl_xs, tl_ys, br_xs, br_ys), dim=3)
-        scores    = anchors_scores.view(batch, K, 1)
+        detections = torch.cat(layer_dets, dim = 0)
+        mask_bboxes = torch.cat(masks_dets_in_layer, dim = 0)
         
-
+        top_scores, top_inds = torch.topk(detections[:, 4], 300)
         
-        width_inds  = (br_xs < tl_xs)
-        height_inds = (br_ys < tl_ys)
-
-        scores[width_inds]  = -1
-        scores[height_inds] = -1
-
-        scores = scores.view(batch, -1)
-
-        scores, inds = torch.topk(scores, min(num_dets, scores.shape[1]))
-        scores = scores.unsqueeze(2)
-
-        bboxes = bboxes.view(batch, -1, 4)
-        bboxes = _gather_feat(bboxes, inds)
-
-        clses  = anchors_clses.contiguous().view(batch, -1, 1)
-        clses  = _gather_feat(clses, inds).float()
-         
-#         
-        bboxes[:, :, 0] *= width_scale
-        bboxes[:, :, 1] *= height_scale
-        bboxes[:, :, 2] *= width_scale
-        bboxes[:, :, 3] *= height_scale
+        mask_bboxes = _gather_feat(mask_bboxes, top_inds)
+        dets = _gather_feat(detections, top_inds)
+        detections_batch.append(dets)
+        
+        dets[:, 0] /= width_scale
+        dets[:, 1] /= height_scale
+        dets[:, 2] /= width_scale
+        dets[:, 3] /= height_scale
+        
+        target_classes = dets[:, -1]
+        
+        _, mask_inds = torch.topk(mask_bboxes[:, -1], mask_bboxes.size(0))
+        mask_bboxes = _gather_feat(mask_bboxes, mask_inds)
+        
+        _, det_inds = torch.topk(dets[:, 6], dets.size(0))
+        dets = _gather_feat(dets, mask_inds)
+        
+        all_pred_masks = []
+        
+        for i in range(len(features)-1, -1,-1):
+            keeps = (mask_bboxes[:, -1] == i)
+            pred_masks = roipool(features[i][b_ind][None,:,:,:], [mask_bboxes[keeps][:,0:4].float()], (2 * max_y + 1, 2 * max_x + 1))
+            all_pred_masks.append( pred_masks)
         
         
-        if i == 0:
-            detections = torch.cat([bboxes, scores,scores,scores, clses], dim=2)
-        else:
-            detections = torch.cat([detections, torch.cat([bboxes, scores,scores,scores, clses], dim=2)], dim = 1)
-   
+        all_pred_masks = torch.cat([i for i in all_pred_masks if i != None], dim = 0)
+        
+                                   
+        all_pred_masks = Xmask(all_pred_masks)
+
+        y_onehot = torch.FloatTensor(all_pred_masks.shape[0], all_pred_masks.shape[1]).type_as(target_classes)
+        y_onehot.zero_()
+        y_onehot.scatter_(1, target_classes.view(-1,1).long(), 1)
+        y_onehot=torch.nonzero(y_onehot.view(-1))  
+#         pdb.set_trace()
+        all_pred_masks = all_pred_masks.view(-1, all_pred_masks.shape[2],all_pred_masks.shape[3])[y_onehot,:,:].squeeze(1)
+        _, h,w = all_pred_masks.shape                                              
+        all_pred_masks = crop_and_resize (all_pred_masks, dets ,h)                                        
+        predmask_batch.append(all_pred_masks)
+        save_image(all_pred_masks.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_predicted.jpg",5)
     
-    top_scores, top_inds = torch.topk(detections[:, :, 4], 300)
-    detections = _gather_feat(detections, top_inds)
-    return detections
+    predmask_batch = torch.cat(predmask_batch, dim =0)
+#     print(predmask_batch.shape, batch)
+    detections_batch = torch.cat(detections_batch, dim =0)
+   
+    predmask_batch = predmask_batch.view(batch, -1, predmask_batch.shape[-2], predmask_batch.shape[-1])
+    detections_batch = detections_batch.view(batch, -1, detections_batch.shape[-1])
+    pdb.set_trace()
+    return detections_batch,predmask_batch
+                                                      
+            
+                                                      
+                                                      
+                                                      
+       
+                                                      
+                                                      
+                                                      
+                                                      
+                                                      
+
 
 

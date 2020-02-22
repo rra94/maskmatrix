@@ -197,13 +197,16 @@ class SubNet(nn.Module):
         return x
 
 def _gather_feat(feat, ind, mask=None):
-    if len(feat.shape) ==3:
+    if len(feat.shape) ==2:
+        dim  = feat.size(1)
+        ind  = ind.unsqueeze(1).expand(ind.size(0), dim)
+        feat = feat.gather(0, ind)
+    elif len(feat.shape) ==3:
         dim  = feat.size(2)
         ind  = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
         feat = feat.gather(1, ind)
     elif len(feat.shape) ==4:
         d0, d1, d2, d3 = feat.shape
-
         feat = feat.view(d0, d1, -1)
         ind  = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), d2*d3)
         feat = feat.gather(1, ind)
@@ -218,9 +221,14 @@ def _gather_feat(feat, ind, mask=None):
     return feat
 
 def _tranpose_and_gather_feat(feat, ind):
-    feat = feat.permute(0, 2, 3, 1).contiguous()
-    feat = feat.view(feat.size(0), -1, feat.size(3))
-    feat = _gather_feat(feat, ind)
+    if len(feat.shape) == 4:
+        feat = feat.permute(0, 2, 3, 1).contiguous()
+        feat = feat.view(feat.size(0), -1, feat.size(3))
+        feat = _gather_feat(feat, ind)
+    elif len(feat.shape) == 3:
+        feat = feat.permute(1, 2, 0).contiguous()
+        feat = feat.view( -1, feat.size(2))
+        feat = _gather_feat(feat, ind)
     return feat
 
 def _nms(heat, kernel=1):
@@ -232,15 +240,24 @@ def _nms(heat, kernel=1):
 
 
 def _topk(scores, K=20):
-    batch, cat, height, width = scores.size()
-    #print(scores.view(batch, -1).shape)
-    topk_scores, topk_inds = torch.topk(scores.view(batch, -1), K)
-
-    topk_clses = (topk_inds / (height * width)).int()
-    #print(topk_clses)
-    topk_inds = topk_inds % (height * width)
-    topk_ys   = (topk_inds / width).int().float()
-    topk_xs   = (topk_inds % width).int().float()
+    if len (scores.shape)==4:
+        batch, cat, height, width = scores.size()
+        #print(scores.view(batch, -1).shape)
+        topk_scores, topk_inds = torch.topk(scores.view(batch, -1), K)
+        topk_clses = (topk_inds / (height * width)).int()
+        #print(topk_clses)
+        topk_inds = topk_inds % (height * width)
+        topk_ys   = (topk_inds / width).int().float()
+        topk_xs   = (topk_inds % width).int().float()
+    elif len (scores.shape)==3:
+        cat, height, width = scores.size()
+        #print(scores.view(batch, -1).shape)
+        topk_scores, topk_inds = torch.topk(scores.view(-1), K)
+        topk_clses = (topk_inds / (height * width)).int()
+        #print(topk_clses)
+        topk_inds = topk_inds % (height * width)
+        topk_ys   = (topk_inds / width).int().float()
+        topk_xs   = (topk_inds % width).int().float()        
     return topk_scores, topk_inds, topk_clses, topk_ys, topk_xs
 
 
