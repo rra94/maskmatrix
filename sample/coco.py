@@ -513,7 +513,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 #     xcyc    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.int32) for output_size in output_sizes]
     
     
-#     db_size = db.db_inds.size
+    db_size = db.db_inds.size
 #     db_size = 10
     
 
