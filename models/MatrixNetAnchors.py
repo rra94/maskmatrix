@@ -187,7 +187,7 @@ class model(nn.Module):
                 pred_masks = roipool(outs[3][ind], dets, (2 * max_y + 1, 2 * max_x + 1))
             
             all_pred_masks[ind] = pred_masks
-        print(all_pred_masks[0].shape)    
+#         print(all_pred_masks[0].shape)    
         if all_pred_masks.count(None) != len(all_pred_masks):
             all_pred_masks = self.Xmask(torch.cat([i for i in all_pred_masks if i != None], dim = 0))
         else:
@@ -285,7 +285,7 @@ class MatrixNetAnchorsLoss(nn.Module):
 
             mask_loss += F.binary_cross_entropy(pred_masks, gt_masks_all_layers)
             
-#             time.sleep(2)
+            time.sleep(10)
             
         if numr > 0:
             corner_regr_loss = corner_regr_loss / numr
@@ -389,22 +389,25 @@ def _decode(
                 
         detections = torch.cat(layer_dets, dim = 0)
         mask_bboxes = torch.cat(masks_dets_in_layer, dim = 0)
-        boxes_without_scaling  =torch.cat(boxes_without_scaling_layer, dim = 0)
+        boxes_without_scaling  = torch.cat(boxes_without_scaling_layer, dim = 0)
         top_scores, top_inds = torch.topk(detections[:, 4], 300)
         
         
         mask_bboxes = _gather_feat(mask_bboxes, top_inds)
         dets = _gather_feat(detections, top_inds)
         boxes_without_scaling =  _gather_feat(boxes_without_scaling, top_inds)
-        detections_batch.append(dets)
+        
 
         
         _, mask_inds = torch.topk(mask_bboxes[:, -1], mask_bboxes.size(0))
         mask_bboxes = _gather_feat(mask_bboxes, mask_inds)
+        dets = _gather_feat(dets, mask_inds)
+        boxes_without_scaling = _gather_feat(boxes_without_scaling, mask_inds)
+        detections_batch.append(dets)
         
-        _, det_inds = torch.topk(dets[:, 6], dets.size(0))
-        dets = _gather_feat(dets, det_inds)
-        boxes_without_scaling = _gather_feat(boxes_without_scaling, det_inds)
+#         _, det_inds = torch.topk(dets[:, 6], dets.size(0))
+#         dets = _gather_feat(dets, det_inds)
+#         boxes_without_scaling = _gather_feat(boxes_without_scaling, det_inds)
 #         boxes_without_scaling[:,0:4] = boxes_without_scaling[:, 0:4]*36
         
         target_classes = dets[:, -1]
@@ -436,9 +439,15 @@ def _decode(
         
         boxes_without_scaling[:,0:2] -= mask_bboxes[:,0:2]
         boxes_without_scaling[:,2:4] -= mask_bboxes[:,0:2]
-        dh = mask_bboxes[:,2:3]-mask_bboxes[:, 0:1]#+1e-10
-        dw = mask_bboxes[:,3:4]-mask_bboxes[:, 1:2]#+1e-10 
-        norm_boxes = torch.cat([36*boxes_without_scaling[:, 0:1]/dh,36*boxes_without_scaling[:, 1:2]/dw ,36*boxes_without_scaling[:, 2:3]/dh,36*boxes_without_scaling[:, 3:4]/dw ] ,dim=1).clone().detach()
+#         dh = mask_bboxes[:,2:3]-mask_bboxes[:, 0:1]#+1e-10
+#         dw = mask_bboxes[:,3:4]-mask_bboxes[:, 1:2]#+1e-10 
+
+#         norm_boxes = torch.cat([36*boxes_without_scaling[:, 0:1]/dh,36*boxes_without_scaling[:, 1:2]/dw ,36*boxes_without_scaling[:, 2:3]/dh,36*boxes_without_scaling[:, 3:4]/dw ] ,dim=1).clone().detach()
+        
+        norm_boxes = (36. - 1.) / (9. - 1.) * boxes_without_scaling[:,:4] # multiplying by the box upsampling ratios (2 deconvs)
+        
+#         print ('n1', norm_boxes)
+#         print ('n2', norm_boxes1)
         
         
         all_pred_masks = crop_and_resize (all_pred_masks, norm_boxes ,h)                                     
