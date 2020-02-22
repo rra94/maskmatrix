@@ -409,9 +409,9 @@ def _decode(
         #nms
         keeps = nms(detections[:,1:5],detections[:, 4], iou_threshold=0.5)
         keeps=keeps[:300]
-        dets = detections[keeps]
-        boxes_without_scaling =  boxes_without_scaling[keeps]
-        mask_bboxes = mask_bboxes[keeps]
+        dets =_gather_feat(detections, keeps)
+        boxes_without_scaling =  _gather_feat(boxes_without_scaling, keeps)
+        mask_bboxes = _gather_feat(mask_bboxes, keeps)
 
   
         _, mask_inds = torch.topk(mask_bboxes[:, -1], mask_bboxes.size(0))
