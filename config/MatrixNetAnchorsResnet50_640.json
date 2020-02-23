@@ -1,0 +1,73 @@
+{
+    "system": {
+        "dataset": "MSCOCO",
+        "batch_size": 19,
+        "sampling_function": "anchors_detection_matrixnets",
+	"model_name": "MatrixNetAnchors",
+
+        "train_split": "train2017",
+        "val_split": "val2017",
+
+        "learning_rate": 0.00005,
+        "decay_rate": 10,
+
+        "val_iter": 1000,
+
+        "opt_algo": "adam",
+        "prefetch_size":6,
+
+        "max_iter": 200000,
+        "stepsize": 130000,
+        "snapshot": 5000,
+
+        "chunk_sizes": [4,5,5,5],
+        "cache_dir" : "/scratch/hdd001/home/arashwan/experiments/FastMxNetAnchorsResnet50_48LayerRange_768isize",
+	"data_dir": "./data/"
+    },
+
+    "db": {
+        "rand_scale_min": 0.6,
+        "rand_scale_max": 1.4,
+        "rand_scale_step": 0.1,
+        "rand_scales": null,
+
+        "rand_crop": true,
+        "rand_color": true,
+
+        "border": 256,
+        "gaussian_bump": true,
+        "gaussian_iou": 0.3,
+        
+        "input_size": [768,768],
+   
+       "output_kernel_size": 1 ,
+       "base_layer_range_":[24,48,24,48],
+       "layers_range_": [[[0,48,0,48],[48,96,0,48],[96,192,0,48], -1, -1],
+                 [[0,48,48,96],[48,96,48,96],[96,192,48,96],[192,384,0,96], -1],
+                 [[0,48,96,192],[48,96,96,192],[96,192,96,192],[192,384,96,192],[384,2000,96,192]],
+                 [-1, [0,96,192,384],[96,192,192,384],[192,384,192,384],[384,2000,192,384]],
+                 [-1, -1, [0,192,384,2000],[192,384,384,2000],[384,2000,384,2000]]] ,
+        
+       "base_layer_range":[32,64,32,64],
+       "layers_range": [[[0,64,0,64],[64,128,0,64],[128,256,0,64], -1, -1],
+         [[0,64,64,128],[64,128,64,128],[128,256,64,128],[256,512,0,128], -1],
+         [[0,64,128,256],[64,128,128,256],[128,256,128,256],[256,512,128,256],[512,2000,128,256]],
+         [-1, [0,128,256,512],[128,256,256,512],[256,512,256,512],[512,2000,256,512]],
+         [-1, -1, [0,256,512,2000],[256,512,512,2000],[512,2000,512,2000]]] ,
+
+        
+	
+        "test_scales": [1],
+	
+        "categories":80,
+	"test_image_max_dim":900,
+	"test_flip_images":false,
+        "nms_threshold": 0.5,
+        "max_per_image": 500,
+        "merge_bbox": false,
+        "weight_exp": 8,
+	"cutout":true,
+        "top_k": 2000,
+        "backbone": "resnet50"
+    }
+}
