@@ -1,6 +1,6 @@
 import sys
 from PIL import Image
-
+import cv2
 import os
 import json
 import numpy as np
@@ -167,6 +167,14 @@ class MSCOCO(DETECTION):
                 category_id = self._classes[cls_ind]
                 for i,bbox in enumerate(all_bboxes[image_id][cls_ind]):
                     mask = all_masks[image_id][cls_ind][i, :, :]
+                    contours, hierarchy = cv2.findContours((mask).astype(np.uint8), cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+                    segmentation = []
+                    for contour in contours:
+                        contour = contour.flatten().tolist()
+                        if len(contour) > 4:
+                            segmentation.append(contour)
+                    if len(segmentation) == 0:
+                        continue  
 #                     print(mask.shape)
 #                     mask = unmold_mask(bbox, mask, image_shape,flag_flip_images)
                     bbox[2] -= bbox[0]
@@ -178,7 +186,7 @@ class MSCOCO(DETECTION):
                         "image_id": coco_id,
                         "category_id": category_id,
                         "bbox": bbox,
-                        "segmentation": maskUtils.encode(np.asfortranarray(mask.astype(np.uint8))),
+                        "segmentation": segmentation,
                         "score": float("{:.2f}".format(score))
                     }
 
