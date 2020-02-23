@@ -1,5 +1,5 @@
 import sys
-
+import cv2
 import os
 import json
 import numpy as np
@@ -164,8 +164,7 @@ class MSCOCO(DETECTION):
                     bbox[2] -= bbox[0]
                     bbox[3] -= bbox[1]
                     mask = all_masks[image_id][cls_ind][i, :, :]
-                    mask_new, contours, hierarchy = cv2.findContours((mask).astype(np.uint8), cv2.RETR_TREE,
-                                                        cv2.CHAIN_APPROX_SIMPLE)
+                    contours, hierarchy = cv2.findContours((mask).astype(np.uint8), cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
                     segmentation = []
                     for contour in contours:
                         contour = contour.flatten().tolist()
