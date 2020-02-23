@@ -283,12 +283,12 @@ class MatrixNetAnchorsLoss(nn.Module):
             
             pred_masks = pred_masks.view(-1, pred_masks.shape[2],pred_masks.shape[3])[y_onehot,:,:].squeeze(1)
             
-            save_image(gt_masks_all_layers.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_after.jpg",5)
-            save_image(pred_masks.float().unsqueeze(1),  "./imgs/pred+" + str(i) + "_after.jpg",5)
+            #save_image(gt_masks_all_layers.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_after.jpg",5)
+            #save_image(pred_masks.float().unsqueeze(1),  "./imgs/pred+" + str(i) + "_after.jpg",5)
 
             mask_loss += F.binary_cross_entropy(pred_masks, gt_masks_all_layers)
             
-            time.sleep(10)
+            #time.sleep(10)
             
         if numr > 0:
             corner_regr_loss = corner_regr_loss / numr
