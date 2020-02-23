@@ -1,4 +1,5 @@
 import math
+import pdb
 import torch
 import torch.nn as nn
 import torchvision.ops.roi_align as roi_align
@@ -15,6 +16,7 @@ import time
 import cv2
 from sample.visualize import display_instances, display_images
 from  torchvision.utils import save_image
+from  torchvision.ops import nms
 
 class SubNet(nn.Module):
 
@@ -287,41 +289,57 @@ class model(nn.Module):
         
         bboxes_decoded = self._decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, rois, bbox_pred_tl,bbox_pred_br, cls_score ,cls_prob,  **kwargs)
 #         print(bboxes_decoded[0][1:100][1:5], "ddddd")
-        batch_size, prenms_nroi, _ = bboxes_decoded.shape
+        
+        bboxes_decoded_after_nms =[]
+    #         pdb.set_trace()
+        for b in range(batch_size):
+            keeps = nms(bboxes_decoded[b][:,0:4],bboxes_decoded[b][:, 4], iou_threshold=0.5)
+            keeps=keeps[:100]
+            bboxes_decoded_after_nms.append(bboxes_decoded[b][keeps].unsqueeze(0))
+        
+        bboxes_decoded_after_nms =torch.cat(bboxes_decoded_after_nms, dim=0)
+#         print(bboxes_decoded_after_nms.shape)
+        
+        batch_size, postnms_nroi, _ = bboxes_decoded_after_nms.shape
 
     
-        bboxes_for_masks=bboxes_decoded.new(batch_size, prenms_nroi, 7).zero_()
+        bboxes_for_masks=bboxes_decoded_after_nms.new(batch_size, postnms_nroi, 7).zero_()
 # #         print(bboxes_decoded[0:,1:4,:])
 
-        _, inds = torch.topk(bboxes_decoded[:,:, 6], bboxes_decoded.size(1))
-        bboxes_decoded = _gather_feat(bboxes_decoded, inds)
+        _, inds = torch.topk(bboxes_decoded_after_nms[:,:, 6], bboxes_decoded_after_nms.size(1))
+    
+        bboxes_decoded_after_nms = _gather_feat(bboxes_decoded_after_nms, inds)
         
-        bboxes_for_masks[:,:,0:1] = bboxes_decoded[:,:,4:5] #score
-        bboxes_for_masks[:,:,1:5] = bboxes_decoded[:,:,0:4]*8 #bbox cords
-        bboxes_for_masks[:,:,5:6] = bboxes_decoded[:,:,7:8] #classes
-        bboxes_for_masks[:,:,6:7] = bboxes_decoded[:,:,6:7] #layer        
+        bboxes_for_masks[:,:,0:1] = bboxes_decoded_after_nms[:,:,4:5] #score
+        bboxes_for_masks[:,:,1:5] = bboxes_decoded_after_nms[:,:,0:4]*8 #bbox cords
+        bboxes_for_masks[:,:,5:6] = bboxes_decoded_after_nms[:,:,7:8] #classes
+        bboxes_for_masks[:,:,6:7] = bboxes_decoded_after_nms[:,:,6:7] #layer    
+        
+
+
+        
         pooled_masks, _, batch_size, nroi,c, h, w = self.RCNN_roi_align(features, bboxes_for_masks)       
               
-        pooled_masks = pooled_masks.view(batch_size*prenms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
+        pooled_masks = pooled_masks.view(batch_size*postnms_nroi, self.nchannels,self.POOLING_SIZE*2 ,self.POOLING_SIZE*2 )
         masks_preds = self.RCNN_mask(pooled_masks)
-        masks_preds = masks_preds.view(batch_size, prenms_nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
+        masks_preds = masks_preds.view(batch_size, postnms_nroi,self.classes-1, self.MASK_SIZE ,self.MASK_SIZE )
 
         masks_preds_final =[]
         
         for b in range(batch_size):
             preds_batch = masks_preds[b]
-            target_classes = bboxes_decoded[b][:,7].long().clone().detach()
+            target_classes = bboxes_decoded_after_nms[b][:,7].long().clone().detach()
             y_onehot = torch.FloatTensor(preds_batch.shape[0], self.classes-1).type_as(target_classes)
             y_onehot.zero_()
             y_onehot.scatter_(1, target_classes.view(-1,1), 1)
             y_onehot=torch.nonzero(y_onehot.view(-1))
             preds_batch = preds_batch.view(-1, preds_batch.shape[2],preds_batch.shape[3])[y_onehot,:,:].squeeze(1)
             masks_preds_final.append(preds_batch.unsqueeze(0).clone().detach())
-            save_image(preds_batch.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_predicted.jpg",5)
+#             save_image(preds_batch.float().unsqueeze(1),  "/home/rragarwal4/matrixnet/imgs/target_predicted.jpg",5)
      
         masks_preds_final = torch.cat(masks_preds_final, dim =0)
      
-        return bboxes_decoded, masks_preds_final
+        return bboxes_decoded_after_nms, masks_preds_final
     
     def forward(self, *xs, **kwargs):
         if len(xs) > 1:
@@ -544,6 +562,11 @@ class ProposalGenerator(nn.Module):
                 tl_ys = anchors_ys -  (((max_y - min_y) * corners_tl_regr[..., 1]) + (max_y + min_y)/2)
                 br_xs = anchors_xs +  (((max_x - min_x) * corners_br_regr[..., 0]) + (max_x + min_x)/2)
                 br_ys = anchors_ys +  (((max_y - min_y) * corners_br_regr[..., 1]) + (max_y + min_y)/2)
+                tl_xs = torch.clamp(tl_xs, 0, width)
+                tl_ys = torch.clamp(tl_ys, 0, height)
+                br_xs = torch.clamp(br_xs, 0, width)
+                br_ys = torch.clamp(br_ys, 0, height)
+                
             bboxes = torch.stack((tl_xs, tl_ys, br_xs, br_ys), dim=3)
             scores    = anchors_scores.view(batch, K, 1)
             width_inds  = (br_xs < tl_xs)

@@ -52,10 +52,6 @@ def unmold_mask(bbox, mask, image_shape):
     for i in range(mask.shape[0]):
         m = mask[i,:, :]
         x1, y1, x2, y2 = bbox[i][:4].astype(int).copy()
-        x1 = max(x1,0)
-        y1 = max(y1,0)
-        x2 = min(w,x2)
-        y2 = min(h, y2)
         widths = x2- x1
         heights = y2-y1
         if heights > 0 and  widths > 0:
@@ -291,7 +287,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
     input_size = db.configs["input_size"]
     output_kernel_size = db.configs["output_kernel_size"]
     base_layer_range = db.configs["base_layer_range"]
-    
+    mask_shape = 28
     _dict={}
     output_sizes=[]
     for i,l in enumerate(layers_range):
@@ -375,7 +371,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 dets[1, :, [0, 2]] = out_width - dets[1, :, [2, 0]]
                 dets   = dets.reshape(1, -1, 8)
                 masks[1] = np.fliplr(mask[1].transpose((1,2,0))).transpose((2,1,0))
-                masks = masks.reshape(1, -1, 28, 28)
+                masks = masks.reshape(1, -1,mask_shape, mask_shape)
             
             _rescale_dets(dets, ratios, borders, sizes)
             dets[:, :, 0:4] /= scale
@@ -388,7 +384,6 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         classes    = classes[0]
         detections = detections[0]
         segmentation = segmentation[0]
-        # reject detections with negative scores
         keep_inds  = (detections[:, 4] > 0)
         detections = detections[keep_inds]
         classes    = classes[keep_inds]
@@ -398,14 +393,16 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         top_masks[image_id] = {}
         for j in range(categories):
             keep_inds = (classes == j)
-            top_bboxes[image_id][j + 1] = detections[keep_inds][:, 0:7].astype(np.float32)
-            top_masks[image_id][j + 1] = segmentation[keep_inds].astype(np.float32)
-            
-            if  merge_bbox:
-                soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
-            else:
-                soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
-            top_bboxes[image_id][j + 1] = top_bboxes[image_id][j + 1][:, 0:5]
+            b = detections[keep_inds][:, 0:5].astype(np.float32)
+            top_bboxes[image_id][j + 1] = b
+            m = segmentation[keep_inds].astype(np.float32)
+            top_masks[image_id][j+1] = unmold_mask(b,m,[height, width])
+
+#             if  merge_bbox:
+#                 soft_nms_merge(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm, weight_exp=weight_exp)
+#             else:
+#                 soft_nms(top_bboxes[image_id][j + 1], Nt=nms_threshold, method=nms_algorithm)
+#             top_bboxes[image_id][j + 1] = top_bboxes[image_id][j + 1][:, 0:5]
 
         scores = np.hstack([
             top_bboxes[image_id][j][:, -1] 
@@ -416,11 +413,8 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             thresh = np.partition(scores, kth)[kth]
             for j in range(1, categories + 1):
                 keep_inds = (top_bboxes[image_id][j][:, -1] >= thresh)
-                b= top_bboxes[image_id][j][keep_inds] 
-                top_bboxes[image_id][j] = b
-                m = top_masks[image_id][j][keep_inds]
-                top_masks[image_id][j] = unmold_mask(b,m, [height,width])
-
+                top_bboxes[image_id][j] = top_bboxes[image_id][j][keep_inds] 
+                top_masks[image_id][j] = top_masks[image_id][j][keep_inds]
                 
         if debug:
             image_file = db.image_file(db_ind)
@@ -442,7 +436,6 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                     fm =  top_masks[image_id][j][keep_inds]
                     fbboxes.append( fb)
                     fmasks.append(fm)
-
                 for bbox in top_bboxes[image_id][j][keep_inds]:
                     bbox  = bbox[0:4].astype(np.int32)
                     if bbox[1] - cat_size[1] - 2 < 0:
@@ -470,7 +463,6 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                         (bbox[2], bbox[3]),
                         color, 2
                     )
-                    
             fmasks = [torch.from_numpy(fm) for fm in fmasks]
             if fbboxes:
                 fbboxes = np.vstack(fbboxes)
@@ -481,11 +473,12 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 fmasks = torch.cat(fmasks, dim =0 )
             else:
                 fmasks = torch.from_numpy(np.zeros( (fbboxes.shape[0],28,28), dtype=np.float32))
+#             print(fmasks.shape)
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
             display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1],debug_dir+"/" ,str(ind)+"_wmasks.jpg" )
             
             #print(debug_file)
-            cv2.imwrite(debug_file,image)
+#             cv2.imwrite(debug_file,image)
 
 
 
