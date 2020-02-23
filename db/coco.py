@@ -164,6 +164,15 @@ class MSCOCO(DETECTION):
                     bbox[2] -= bbox[0]
                     bbox[3] -= bbox[1]
                     mask = all_masks[image_id][cls_ind][i, :, :]
+                    mask_new, contours, hierarchy = cv2.findContours((mask).astype(np.uint8), cv2.RETR_TREE,
+                                                        cv2.CHAIN_APPROX_SIMPLE)
+                    segmentation = []
+                    for contour in contours:
+                        contour = contour.flatten().tolist()
+                        if len(contour) > 4:
+                            segmentation.append(contour)
+                    if len(segmentation) == 0:
+                        continue        
                     score = bbox[4]
                     bbox  = list(map(self._to_float, bbox[0:4]))
 
@@ -171,7 +180,7 @@ class MSCOCO(DETECTION):
                         "image_id": coco_id,
                         "category_id": category_id,
                         "bbox": bbox,
-                        "segmentation": maskUtils.encode(np.asfortranarray(mask.astype(np.uint8))),
+                        "segmentation": segmentation,
                         "score": float("{:.2f}".format(score))
                     }
 
