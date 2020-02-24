@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from .py_utils.loss_utils import _regr_loss, _neg_loss
 from torch.autograd import Variable
 from .resnet_features import resnet50_features, resnet18_features, resnet101_features, resnext101_32x8d, wide_resnet101_2
-from .py_utils.utils import conv1x1, conv3x3
+from .py_utils.utils import conv1x1, conv3x3, conv3x3_sc
 
 def _sigmoid(x):
     x = torch.clamp(x.sigmoid_(), min=1e-4, max=1-1e-4)

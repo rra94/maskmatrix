@@ -260,5 +260,6 @@ def crop_and_resize(mask, boxes, mask_size):
 #     print(torch.min(boxes), torch.max(boxes))
     bit_masks = mask.float()
     output = roi_align(bit_masks[:, None, :, :], rois, (mask_size, mask_size)).squeeze(1)
-    output = torch.round(output).clone().detach()  
+#     output = torch.round(output).clone().detach() 
+#     output = output.clone().detach() 
     return output

@@ -28,7 +28,14 @@ def conv3x3(in_channels, out_channels, **kwargs):
     layer = init_conv_weights(layer)
 
     return layer
-       
+
+def conv3x3_sc(in_channels, out_channels, **kwargs):
+    '''Return a 3x3 convolutional layer with RetinaNet's weight and bias initialization'''
+
+    layer = nn.Conv2d(in_channels, out_channels, kernel_size=3, groups = in_channels, **kwargs)
+    layer = init_conv_weights(layer)
+
+    return layer
 
 def _sigmoid(x):
     x = torch.clamp(x.sigmoid_(), min=1e-4, max=1-1e-4)

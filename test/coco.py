@@ -55,7 +55,8 @@ def unmold_mask(bbox, mask, image_shape):
         widths = x2-x1
         heights = y2-y1
         if widths >0 and heights > 0 :
-            m = np.array(Image.fromarray(m).resize((widths,heights)))
+            m = cv2.resize(m, (widths, heights), interpolation = cv2.INTER_LANCZOS4) > threshold
+#             m = np.array(Image.fromarray(m).resize((widths,heights))) > threshold
             full_masks[i][y1:y2, x1:x2] = m
 
     return full_masks
@@ -267,9 +268,9 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         os.makedirs(debug_dir)
 
     if db.split != "trainval":
-        db_inds = db.db_inds[:10] if debug else db.db_inds
+        db_inds = db.db_inds[:100] if debug else db.db_inds
     else:
-        db_inds = db.db_inds[:10] if debug else db.db_inds[:2]
+        db_inds = db.db_inds[:200] if debug else db.db_inds[:2]
     num_images = db_inds.size
 
     K             = db.configs["top_k"]
@@ -482,7 +483,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
             if fmasks:
                 fmasks = torch.cat(fmasks, dim =0 )
             else:
-                fmasks = torch.from_numpy(np.zeros( (fbboxes.shape[0],28,28), dtype=np.float32))
+                fmasks = torch.from_numpy(np.zeros( (fbboxes.shape[0],36,36), dtype=np.float32))
 #             print(debug_dir)
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
             display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1],debug_dir+"/" ,str(ind)+"_wmasks.jpg" )

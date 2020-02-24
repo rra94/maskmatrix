@@ -407,8 +407,8 @@ def _decode(
 #         boxes_without_scaling =  _gather_feat(boxes_without_scaling, top_inds)
         
         #nms
-        keeps = nms(detections[:,:4],detections[:, 4], iou_threshold=0.5)
-        keeps=keeps[:300]
+        keeps = nms(detections[:,:4],detections[:, 4], iou_threshold=0.6)
+        keeps=keeps[:100]
         dets =_gather_feat(detections, keeps)
         boxes_without_scaling =  _gather_feat(boxes_without_scaling, keeps)
         mask_bboxes = _gather_feat(mask_bboxes, keeps)
