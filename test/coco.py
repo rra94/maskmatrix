@@ -20,8 +20,8 @@ def _rescale_dets(detections, ratios, borders, sizes):
     ys    /= ratios[:, 0][:, None, None]
     xs    -= borders[:, 2][:, None, None]
     ys    -= borders[:, 0][:, None, None]
-    np.clip(xs, 0, sizes[:, 1][:, None, None], out=xs)
-    np.clip(ys, 0, sizes[:, 0][:, None, None], out=ys)
+    np.clip(xs, 0, sizes[:, 1][:, None, None] - 1 , out=xs)
+    np.clip(ys, 0, sizes[:, 0][:, None, None] - 1 , out=ys)
 
 def save_image(data, fn):
     sizes = np.shape(data)
@@ -52,12 +52,18 @@ def unmold_mask(bbox, mask, image_shape):
     for i in range(mask.shape[0]):
         m = mask[i,:, :]
         x1, y1, x2, y2 = bbox[i][:4].astype(int)
-        widths = x2-x1
-        heights = y2-y1
-        if widths >0 and heights > 0 :
-            m = cv2.resize(m, (widths, heights), interpolation = cv2.INTER_LANCZOS4) > threshold
-#             m = np.array(Image.fromarray(m).resize((widths,heights))) > threshold
-            full_masks[i][y1:y2, x1:x2] = m
+        widths = x2-x1+1
+        heights = y2-y1+1
+#         print(x1, y1, x2, y2, widths, heights)
+#         print (widths, heights)
+#         if (widths * heights) > 10000:
+# #                 print('here')
+#             m = cv2.resize(m, (widths, heights), interpolation = cv2.INTER_LANCZOS4) > 0.3
+#         else:
+        
+        m = cv2.resize(m, (widths, heights), interpolation = cv2.INTER_LANCZOS4) > threshold
+
+        full_masks[i][y1:y2+1, x1:x2+1] = m
 
     return full_masks
 
@@ -486,7 +492,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
                 fmasks = torch.from_numpy(np.zeros( (fbboxes.shape[0],36,36), dtype=np.float32))
 #             print(debug_dir)
             debug_file = os.path.join(debug_dir, "{}.jpg".format(db_ind))
-            display_instances(image, fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1],debug_dir+"/" ,str(ind)+"_wmasks.jpg" )
+            display_instances(image[:,:,::-1], fbboxes , fmasks.numpy().transpose((1, 2, 0)), fbboxes[:,-1],debug_dir+"/" ,str(ind)+"_wmasks.jpg" )
             
             #print(debug_file)
 #             cv2.imwrite(debug_file,image)
@@ -497,6 +503,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         json.dump(detections, f)
     cls_ids   = list(range(1, categories + 1))
     image_ids = [db.image_ids(ind) for ind in db_inds]
+    db.evaluate_masks(result_json, cls_ids, image_ids)
     db.evaluate_boxes(result_json, cls_ids, image_ids)
     return 0
 

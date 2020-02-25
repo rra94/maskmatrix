@@ -286,6 +286,11 @@ class MatrixNetAnchorsLoss(nn.Module):
             #save_image(gt_masks_all_layers.float().unsqueeze(1),  "./imgs/target+" + str(i) + "_after.jpg",5)
             #save_image(pred_masks.float().unsqueeze(1),  "./imgs/pred+" + str(i) + "_after.jpg",5)
 
+            
+#             BCE_loss = F.binary_cross_entropy(pred_masks, gt_masks_all_layers, reduce=False)
+#             pt = torch.exp(-BCE_loss)
+#             mask_loss += torch.mean((1-pt)**2 * BCE_loss)        
+            
             mask_loss += F.binary_cross_entropy(pred_masks, gt_masks_all_layers)
             
             #time.sleep(10)

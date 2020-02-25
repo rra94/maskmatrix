@@ -248,6 +248,25 @@ class MSCOCO(DETECTION):
         eval_ids = [self._coco_eval_ids[image_id] for image_id in image_ids]
         cat_ids  = [self._classes[cls_id] for cls_id in cls_ids]
         coco_dets = coco.loadRes(result_json)
+        coco_eval_boxes = COCOeval(coco, coco_dets, "bbox")
+#         coco_eval_boxes = COCOeval(coco, coco_dets)
+        coco_eval_boxes.params.imgIds = eval_ids
+        coco_eval_boxes.params.catIds = cat_ids
+        coco_eval_boxes.evaluate()
+        coco_eval_boxes.accumulate()
+        coco_eval_boxes.summarize()
+        
+        return coco_eval_boxes.stats[0], coco_eval_boxes.stats[12:]
+    
+    def evaluate_masks(self, result_json, cls_ids, image_ids, gt_json=None):
+        if self._split == "testdev":
+            return None
+
+        coco = self._coco if gt_json is None else COCO(gt_json)
+
+        eval_ids = [self._coco_eval_ids[image_id] for image_id in image_ids]
+        cat_ids  = [self._classes[cls_id] for cls_id in cls_ids]
+        coco_dets = coco.loadRes(result_json)
 #         coco_eval_boxes = COCOeval(coco, coco_dets, "bbox")
         coco_eval_boxes = COCOeval(coco, coco_dets)
         coco_eval_boxes.params.imgIds = eval_ids
@@ -256,5 +275,5 @@ class MSCOCO(DETECTION):
         coco_eval_boxes.accumulate()
         coco_eval_boxes.summarize()
         
-        return coco_eval_boxes.stats[0], coco_eval_boxes.stats[12:]
+        return coco_eval_boxes.stats[0], coco_eval_boxes.stats[12:]    
 
