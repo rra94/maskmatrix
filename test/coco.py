@@ -494,7 +494,7 @@ def test_MatrixNetAnchors(db, nnet, result_dir, debug=False, decode_func=kp_deco
         detections = [] 
         for scale in scales:
             org_scale = scale
-            scale = scale * max((max_dim)/float(height), (max_dim)/float(width))
+            scale = scale * min((max_dim)/float(height), (max_dim)/float(width))
             new_height = int(height * scale)
             new_width  = int(width * scale)
             new_center = np.array([new_height // 2, new_width // 2])

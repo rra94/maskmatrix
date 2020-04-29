@@ -417,7 +417,9 @@ def _decode(anchors_heatmaps, anchors_tl_corners_regr, anchors_br_corners_regr, 
         topk_inds = (topk_inds / (classes)).long()
         inds = topk_inds.unsqueeze(2).expand(batch, K, dets.size(2))
         dets = torch.gather(dets, 1, inds)
-        dets[:,:,0] =  torch.sqrt(topk_scores[:,:] * dets[:,:,0])
+        dets[:,:,0] = torch.sqrt(topk_scores[:,:] * dets[:,:,0])
         dets[:,:,5] = topk_clses
         dets_return = torch.cat([dets[:,:,1:5], dets[:,:, 0:1], dets[:,:, 0:1], dets[:,:,0:1], dets[:,:,5:6]], dim =2)
+        #top_scores, top_inds = torch.topk(dets_return[:, :, 4], 300)
+        #dets_return = _gather_feat(dets_return, top_inds)
         return dets_return
