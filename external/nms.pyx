@@ -45,13 +45,15 @@ def nms(np.ndarray[np.float32_t, ndim=2] dets, np.float thresh):
     cdef np.float32_t xx1, yy1, xx2, yy2
     cdef np.float32_t w, h
     cdef np.float32_t inter, ovr
-
+    dict_= {}
     keep = []
     for _i in range(ndets):
         i = order[_i]
         if suppressed[i] == 1:
             continue
         keep.append(i)
+        dict_[i] = []
+        
         ix1 = x1[i]
         iy1 = y1[i]
         ix2 = x2[i]
@@ -71,8 +73,9 @@ def nms(np.ndarray[np.float32_t, ndim=2] dets, np.float thresh):
             ovr = inter / (iarea + areas[j] - inter)
             if ovr >= thresh:
                 suppressed[j] = 1
-
-    return keep
+                if dict_:
+                    dict_[i].append(j)
+    return keep, dict_
 
 def soft_nms(np.ndarray[float, ndim=2] boxes, float sigma=0.5, float Nt=0.3, float threshold=0.001, unsigned int method=0):
     cdef unsigned int N = boxes.shape[0]

@@ -16,9 +16,9 @@
         "opt_algo": "adam",
         "prefetch_size":6,
 
-        "max_iter": 500000,
-        "stepsize": 350000,
-        "snapshot": 10000,
+        "max_iter": 200000,
+        "stepsize": 130000,
+        "snapshot": 5000,
 
         "chunk_sizes": [4,5,5,5],
         "cache_dir" : "/scratch/hdd001/home/arashwan/experiments/FastMxNetAnchorsResnet50_64LayerRange_768isize",
@@ -60,14 +60,14 @@
         "test_scales": [1],
 	
         "categories":80,
-	"test_image_max_dim":1000,
+	"test_image_max_dim":768,
 	"test_flip_images":false,
         "nms_threshold": 0.5,
         "max_per_image": 500,
         "merge_bbox": false,
         "weight_exp": 8,
 	"cutout":true,
-        "top_k": 100,
+        "top_k": 2000,
         "backbone": "resnet50"
     }
 }

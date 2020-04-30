@@ -5,7 +5,7 @@ import torch
 import random
 import string
 from random import randrange
-
+import pdb
 from config import system_configs
 from utils import crop_image, normalize_, color_jittering_, lighting_
 from .utils import random_crop, draw_gaussian, gaussian_radius
@@ -13,6 +13,9 @@ from pycocotools import mask as maskUtils
 from .visualize import display_instances, display_images
 from PIL import Image
 import time
+
+PIXEL_MEAN = [0.485, 0.456, 0.406]
+PIXEL_STD = [0.229, 0.224, 0.225]
 
 def _get_border(border, size):
     i = 1
@@ -29,7 +32,7 @@ def crop_img(image, parms):
     cropped_image = np.zeros((height, width, image.shape[2]), dtype=image.dtype)
     cimg =  image[y0:y1, x0:x1, :]
     cropped_image[y_slice, x_slice, :] = cimg
-    return cropped_image
+    return cropped_image, (cropped_ctx - left_w, cropped_ctx + right_w) ,(cropped_cty - top_h, cropped_cty + bottom_h)  
 
 
 def crop_box(bbox,parms):
@@ -66,8 +69,8 @@ def data_augs(image,masks ,bbox, categories, height, width, border, rand_crop, r
         left_w, right_w = ctx - x0, x1 - ctx
         top_h, bottom_h = cty - y0, y1 - cty
         parms_sc = [o_height, o_width , height, width, x0,x1,y0,y1,left_w, right_w, top_h, bottom_h]        
-        image = crop_img(image, parms =parms_sc)
-        segmentations = crop_img(segmentations, parms =parms_sc)
+        image, x_slice,y_slice = crop_img(image, parms =parms_sc)
+        segmentations, _ , _ = crop_img(segmentations, parms =parms_sc)
         detections = crop_box(detections, parms =parms_sc)
     else:
         image, detections,segmentations = _full_image_crop(image, detections,segmentations)
@@ -78,17 +81,14 @@ def data_augs(image,masks ,bbox, categories, height, width, border, rand_crop, r
         detections[:, [0, 2]] = width - detections[:, [2, 0]] - 1
         segmentations = segmentations[:, ::-1, :]
 
-    return   image,  segmentations, detections, categories
+    return   image,  segmentations, detections, categories ,x_slice,y_slice
 
 
 
 def mask_keeps(detections, segmentations):
-#     print(segmentations.shape)
     n_seg = segmentations.shape[0]
     s =segmentations.reshape(n_seg, -1)
-#     print(s.shape)
     keeps = np.nonzero(np.sum(segmentations.reshape(n_seg, -1), axis=1)>0)
-    #     print(keeps)
     return detections[keeps], segmentations[keeps]
         
 def annToRLE(h,w, segm):
@@ -99,7 +99,6 @@ def annToRLE(h,w, segm):
     if type(segm) == list:
         # polygon -- a single object might consist of multiple parts
         # we merge all parts into one mask rle code
-#         print(segm)
         rles = maskUtils.frPyObjects(segm, h, w)
         rle = maskUtils.merge(rles)
     elif type(segm['counts']) == list:
@@ -149,16 +148,8 @@ def _clip_detections(image, detections, segmentations):
 
     detections[:, 0:4:2] = np.clip(detections[:, 0:4:2], 0, width - 1)
     detections[:, 1:4:2] = np.clip(detections[:, 1:4:2], 0, height - 1)
-    
-#     for seg in segmentations:
-#         if seg.size <= 6:
-#             continue
-#         seg[:, 0::2] = np.clip(seg[:, 0::2], 0, width - 1)
-#         seg[:, 1::2] = np.clip(seg[:, 1::2], 0, height - 1)
-
     keep_inds  = ((detections[:, 2] - detections[:, 0]) >= 1) & \
                  ((detections[:, 3] - detections[:, 1]) >= 1)
-#     print(keep_inds)
     detections = detections[keep_inds]
     segmentations = segmentations[keep_inds]
     
@@ -193,26 +184,22 @@ def unmold_mask(bbox, mask, image_shape):
     """
     h,w = image_shape[0:2]
     threshold = 0.5
-#     mask = mask.data.cpu().numpy()
     full_masks = np.zeros((mask.shape[0],)+(h,w), dtype=bool)
     for i in range(mask.shape[0]):
         m = mask[i,:, :]
         x1, y1, x2, y2 = bbox[i][:4].astype(int)
         widths = x2-x1+1
         heights = y2-y1+1
-#         print(x1, y1, x2, y2, widths, heights)
         if widths >0 and heights > 0 :
-#             print ((widths//2, heights//2))
 #             m = cv2.resize(m, (widths//2, heights//2), interpolation = cv2.INTER_LANCZOS4)
             m = cv2.resize(m, (widths, heights), interpolation = cv2.INTER_LANCZOS4) > threshold
 #             m = np.array(Image.fromarray(m).resize((widths,heights))) > threshold
-#             print(m.shape)
             full_masks[i][y1:y2+1, x1:x2+1] = m
 
     return full_masks
 
 
-def minimize_mask(mask, bbox, minimask_shape):
+def minimize_mask(mask, bbox, minimask_shape, mask_blur_size=9):
     """Resize masks to a smaller version to cut memory load.
     Mini-masks can then resized back to image scale using expand_masks()
     """
@@ -220,35 +207,22 @@ def minimize_mask(mask, bbox, minimask_shape):
     w = x2 - x1 + 1
     h = y2 - y1 + 1
     crop = mask[slice(max(0,y1),min(y2+1,mask.shape[0])), slice(max(0,x1),min(x2+1,mask.shape[1]))] 
-    
-#     print(crop.shape, mask.shape)
     minimask = np.zeros((y2 - y1 + 1, x2 - x1 +  1), dtype=np.float32)
-    
-#     print("before: ", x1, y1, x2, y2)
-    
     x1 = max(0, -x1)
-    y1 = max(0, -y1)
-        
-#     if  mask.shape[0] - y2  > 0:
-#         y2 = minimask_shape[0]
-#     else:
-#         y2 = minimask_shape[0]-y2
-        
-#     y2 = y1 + h - min(mask.shape[0] - y2, 0)
-#     x2 = x1 + w - min(mask.shape[1] - x2, 0)
-    
-#     print("after: ", x1, y1, x2, y2)
-#     if x2 < mask.shape[1]:
-#         x2 = minimask_shape[1]
-#     else:
-#         x2 = minimask_shape[1]-x2    
-        
+    y1 = max(0, -y1)      
     minimask[y1:y1+crop.shape[0], x1:x1+crop.shape[1]] = crop
-    if mask.size == 0:
-        print("Invalid bounding box with area of zero")
-#     minimask = np.array(Image.fromarray(minimask).resize(minimask_shape)) 
+    dst = cv2.GaussianBlur(crop,(mask_blur_size,mask_blur_size),0)
+    contours, hierarchy = cv2.findContours(dst, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    cim = np.zeros_like(crop)
+
     minimask = cv2.resize(minimask, minimask_shape, interpolation = cv2.INTER_LANCZOS4)
-    return minimask
+    cim = cv2.Canny((255. * minimask).astype(np.uint8),100, 150) /255.
+    cim = ((cv2.GaussianBlur(cim,(3,3),cv2.BORDER_DEFAULT) > 0.3).astype(float) + 1)
+    cim = cim / np.sum(cim)
+
+    
+
+    return minimask, cim
 
 def cutout(image, detections): 
     for detection in detections:
@@ -473,7 +447,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     height_thresholds = db.configs["height_thresholds"]
     layers_range = db.configs["layers_range"]
     max_tag_len = 128
-    minimask_shape = (36, 36)
+    minimask_shape = (26, 26)
     ratios ={}
     _dict={}
     output_sizes=[]
@@ -495,6 +469,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     anchors_heatmaps = [np.zeros((batch_size, nclasses, output_size[0], output_size[1]), dtype=np.float32) for output_size in output_sizes]
 #     detections_batch     = np.zeros((batch_size,200, 7), dtype=np.float32) 
     segmentations_batch =  [np.zeros((batch_size,max_tag_len, minimask_shape[0],minimask_shape[1] ), dtype=np.float32) for output_size in output_sizes]
+    segmentations_outline_batch =  [np.zeros((batch_size,max_tag_len, minimask_shape[0],minimask_shape[1] ), dtype=np.float32) for output_size in output_sizes]
 #     mask_detections_batch     = np.zeros((batch_size,200, 7), dtype=np.float32) 
     tl_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
     br_corners_regrs    = [np.zeros((batch_size, max_tag_len, 2), dtype=np.float32) for output_size in output_sizes]
@@ -538,18 +513,10 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 segs.append(msks)
             else:
                 segs.append(np.zeros((image.shape[0], image.shape[1]), dtype=np.int8) )
-#         categories = np.expand_dims(categories, axis=1)
-#         b_cat = categories.copy()
-        
-#         print( "efore",len(segmentations), detections, categories)
-        image,  segmentations, detections, categories  = data_augs(image, segs ,detections, categories, input_size[0], input_size[1], border, rand_crop,rand_scales,debug)
+
+        image,  segmentations, detections, categories, x_slice, y_slice  = data_augs(image, segs ,detections, categories, input_size[0], input_size[1], border, rand_crop,rand_scales,debug)
         image, detections , segmentations = _resize_image(image, detections, segmentations, input_size)
-#         if True: #not np.all(categories == np.expand_dims(b_cat, axis=1)):
-#             print( "before", np.expand_dims(b_cat, axis=1) == categories)
-# #             print( "after", categories)
-                
-#         time.sleep(2)
-#         print("before",detections.shape, segmentations.shape)
+
         if detections.shape[0] >0:
             detections = np.concatenate((detections, categories), axis=1)
             segmentations_ = segmentations
@@ -565,12 +532,14 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 color_jittering_(data_rng, image)
                 if lighting:
                     lighting_(data_rng, image, 0.1, db.eig_val, db.eig_vec)
+            normalizer = lambda x: (x - PIXEL_MEAN) / PIXEL_STD
+            image = normalizer(image)                    
         
         images[b_ind] = image.transpose((2, 0, 1))
         
         dets = []
         segs = []
-      
+        #pdb.set_trace()
         for ind, detection in enumerate(detections):
             
             category = int(detection[-1]) - 1
@@ -611,9 +580,13 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
 
                 else:
                     anchors_heatmaps[olayer_idx][b_ind, category, yc, xc] = 1
-
-                tag_ind = tag_lens[olayer_idx][b_ind]
+                #ignore non image centers
+                #if (xtl+xbr)/2 < x_slice[0] or  (xtl+xbr)/2 > x_slice[1]:
+                #    anchors_heatmaps[olayer_idx][b_ind, category, yc, xc] = -100
+                #if (ytl+ybr)/2 < y_slice[0] or  (ytl+ybr)/2 > y_slice[1]:
+                #    anchors_heatmaps[olayer_idx][b_ind, category, yc, xc] = -100
                 
+                tag_ind = tag_lens[olayer_idx][b_ind]
                 
                 min_y, max_y , min_x, max_x = map(lambda x: x/8/2, base_layer_range)
 
@@ -621,20 +594,16 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                                                                 ((yc - fytl) - (max_y+min_y)/2)/ (max_y-min_y)]
                 br_corners_regrs[olayer_idx][b_ind, tag_ind, :] = [((fxbr - xc) - (max_x+min_x)/2)/ (max_x-min_x),
                                                                 ((fybr - yc) - (max_y+min_y)/2)/ (max_y-min_y)]
-                
-                
+                          
                 anchors_tags[olayer_idx][b_ind, tag_ind] = yc * output_sizes[olayer_idx][1] + xc
                 tag_lens[olayer_idx][b_ind] += 1
                 
-#                 xcyc[olayer_idx][b_ind, tag_ind] = [xc, yc]
-                
-#                 print(xc, yc, olayer_idx)
 
                 seg_tag_ind = seg_tag_lens[olayer_idx][b_ind]
                 det_mask_roi = [(xc - max_x)/width_ratio, (yc - max_y)/height_ratio, (xc + max_x)/width_ratio, (yc + max_y)/height_ratio]
                 
 
-                mini_seg_mask = minimize_mask(segmentations[ind], det_mask_roi, minimask_shape)
+                mini_seg_mask,mini_seg_outline = minimize_mask(segmentations[ind], det_mask_roi, minimask_shape)
             
                 
 #                 if not(det_mask_roi[0] < 0 or det_mask_roi[1] < 0 or det_mask_roi[2] > 639 or det_mask_roi[3] > 639):
@@ -644,6 +613,7 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
                 
                 if np.any(mini_seg_mask): # non zero segmentation
                     segmentations_batch[olayer_idx][b_ind, seg_tag_ind, :,:] = mini_seg_mask
+                    segmentations_outline_batch[olayer_idx][b_ind, seg_tag_ind, :,:] = mini_seg_outline
                     seg_tags[olayer_idx][b_ind, seg_tag_ind] = yc * output_sizes[olayer_idx][1] + xc
 
                     seg_labels[olayer_idx][b_ind, seg_tag_ind] = category
@@ -683,12 +653,12 @@ def samples_MatrixNetAnchors(db, k_ind, data_aug, debug):
     seg_tags     = [torch.from_numpy(t) for t in seg_tags]
     seg_tag_masks   = [torch.from_numpy(tags) for tags in seg_tag_masks]
     seg_masks= [torch.from_numpy(seg) for seg in segmentations_batch]
+    seg_outlines= [torch.from_numpy(seg) for seg in segmentations_outline_batch]
     seg_labels = [torch.from_numpy(l) for l in seg_labels]
     
-#     xcyc = [torch.from_numpy(x) for x in xcyc]
     return {
         "xs": [images, anchors_tags, seg_tags, seg_tag_masks],
-        "ys": [anchors_heatmaps, tl_corners_regrs, br_corners_regrs, tag_masks, seg_masks , seg_labels, seg_tag_masks]
+        "ys": [anchors_heatmaps, tl_corners_regrs, br_corners_regrs, tag_masks, seg_masks , seg_labels, seg_tag_masks, seg_outlines]
     }, k_ind
 def sample_data(db, k_ind, data_aug=True, debug=False):
     return globals()["samples_"+system_configs.model_name](db, k_ind, data_aug, debug)

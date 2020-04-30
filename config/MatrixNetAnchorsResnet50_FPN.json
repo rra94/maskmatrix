@@ -41,7 +41,7 @@
         "input_size": [640, 640],
    
        "output_kernel_size": 1 ,
-       "base_layer_range":[24,48,24,48],
+       "base_layer_range":[32,64,32,64],
        "layers_range": [[[0,48,0,48],-1,-1, -1, -1],
                  [-1,[48,96,48,96],-1,-1, -1],
                  [-1,-1,[96,192,96,192],-1, -1],
@@ -52,7 +52,7 @@
 	
         "test_scales": [1],
 	
-        "categories":81,
+        "categories":80,
 	"test_image_max_dim":640,
 	"test_flip_images":false,
         "nms_threshold": 0.5,

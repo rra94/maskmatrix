@@ -67,7 +67,7 @@
         "merge_bbox": false,
         "weight_exp": 8,
 	"cutout":true,
-        "top_k": 2000,
+        "top_k": 100,
         "backbone": "resnet50"
     }
 }

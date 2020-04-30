@@ -1,7 +1,7 @@
 {
     "system": {
         "dataset": "MSCOCO",
-        "batch_size": 19,
+        "batch_size": 16,
         "sampling_function": "anchors_detection_matrixnets",
 	"model_name": "MatrixNetAnchors",
 
@@ -20,8 +20,8 @@
         "stepsize": 350000,
         "snapshot": 10000,
 
-        "chunk_sizes": [4,5,5,5],
-        "cache_dir" : "/scratch/hdd001/home/arashwan/experiments/FastMxNetAnchorsResnet50_64LayerRange_768isize",
+        "chunk_sizes": [4,4,4,4],
+        "cache_dir" : "/scratch/hdd001/home/arashwan/experiments/FastMxNetAnchorsResnet50_focal_64LayerRange_768isize",
 	"data_dir": "./data/"
     },
 

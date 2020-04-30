@@ -112,51 +112,56 @@ class MatrixNet(nn.Module):
         
         if 12 in self.visited:
             _dict[12] = self.downsample_transformation_12(_dict[11])
-        if 13 in self.visited:
-            _dict[13] = self.downsample_transformation_12(_dict[12])
-        if 14 in self.visited:
-            _dict[14] = self.downsample_transformation_12(_dict[13])
-        if 15 in self.visited:
-            _dict[15] = self.downsamole_transformation_12(_dict[14])
-
-        if 21 in self.visited:
-            _dict[21] = self.downsample_transformation_21(_dict[11])
-        if 31 in self.visited:
-            _dict[31] = self.downsample_transformation_21(_dict[21])
-        if 41 in self.visited:
-            _dict[41] = self.downsample_transformation_21(_dict[31])
-        if 51 in self.visited:
-            _dict[51] = self.downsample_transformation_21(_dict[41])
-        
         if 23 in self.visited:
-            _dict[23] = self.downsample_transformation_12(_dict[22])
-        if 24 in self.visited:
-            _dict[24] = self.downsample_transformation_12(_dict[23])
-        if 25 in self.visited:
-            _dict[25] = self.downsample_transformation_12(_dict[24])
-
-        if 32 in self.visited:
-            _dict[32] = self.downsample_transformation_21(_dict[22])
-        if 42 in self.visited:
-            _dict[42] = self.downsample_transformation_21(_dict[32])
-        if 52 in self.visited:
-            _dict[52] = self.downsample_transformation_21(_dict[42])
-
+            _dict[23] = self.downsample_transformation_12(_dict[22])            
         if 34 in self.visited:
-            _dict[34] = self.downsample_transformation_12(_dict[33])
-        if 35 in self.visited:
-            _dict[35] = self.downsample_transformation_12(_dict[34])
-        
-        if 43 in self.visited:
-            _dict[43] = self.downsample_transformation_21(_dict[33])
-        if 53 in self.visited:
-            _dict[53] = self.downsample_transformation_21(_dict[43])
-        
+            _dict[34] = self.downsample_transformation_12(_dict[33])   
         if 45 in self.visited:
             _dict[45] = self.downsample_transformation_12(_dict[44])
+        
+        
+        if 21 in self.visited:
+            _dict[21] = self.downsample_transformation_21(_dict[11])
+        if 32 in self.visited:
+            _dict[32] = self.downsample_transformation_21(_dict[22])
+        if 43 in self.visited:
+            _dict[43] = self.downsample_transformation_21(_dict[33])   
         if 54 in self.visited:
             _dict[54] = self.downsample_transformation_21(_dict[44])
         
+        
+        if 13 in self.visited:
+            _dict[13] = self.downsample_transformation_12(_dict[12])
+        if 24 in self.visited:
+            _dict[24] = self.downsample_transformation_12(_dict[23])            
+        if 35 in self.visited:
+            _dict[35] = self.downsample_transformation_12(_dict[34])
+        
+        if 31 in self.visited:
+            _dict[31] = self.downsample_transformation_21(_dict[21])
+        if 42 in self.visited:
+            _dict[42] = self.downsample_transformation_21(_dict[32])
+        if 53 in self.visited:
+            _dict[53] = self.downsample_transformation_21(_dict[43])            
+       
+    
+        if 14 in self.visited:
+            _dict[14] = self.downsample_transformation_12(_dict[13])
+        if 25 in self.visited:
+            _dict[25] = self.downsample_transformation_12(_dict[24])
+        
+        
+        if 52 in self.visited:
+            _dict[52] = self.downsample_transformation_21(_dict[42])
+        if 41 in self.visited:
+            _dict[41] = self.downsample_transformation_21(_dict[31])
+            
+        if 15 in self.visited:
+            _dict[15] = self.downsample_transformation_12(_dict[14])            
+        
+        if 51 in self.visited:
+            _dict[51] = self.downsample_transformation_21(_dict[41])
+
         #the layer ranges is defined column first so we invert the indexes for sorting
 
         order_keeps = {(i%10)*10+(i//10):i for i in self.keeps}
@@ -239,11 +244,41 @@ def _nms(heat, kernel=1):
     return heat * keep
 
 
+# def _topk(scores, K=20):
+#     if len (scores.shape)==4:
+#         batch, cat, height, width = scores.size()
+#         #print(scores.view(batch, -1).shape)
+# #         topk_scores, topk_inds = torch.topk(scores.view(batch, -1), K) #topk_inds = scores.view(batch, -1).sort(descending=True)
+#         topk_scores, topk_inds = scores.view(batch, -1).sort(descending=True)
+        
+#         topk_scores = topk_scores[:K]
+#         topk_inds = topk_inds[:K]
+#         topk_clses = (topk_inds / (height * width)).int()
+#         #print(topk_clses)
+#         topk_inds = topk_inds % (height * width)
+#         topk_ys   = (topk_inds / width).int().float()
+#         topk_xs   = (topk_inds % width).int().float()
+#     elif len (scores.shape)==3:
+#         cat, height, width = scores.size()
+#         #print(scores.view(batch, -1).shape)
+#         topk_scores, topk_inds = torch.topk(scores.view(-1), K)
+#         topk_clses = (topk_inds / (height * width)).int()
+#         #print(topk_clses)
+#         topk_inds = topk_inds % (height * width)
+#         topk_ys   = (topk_inds / width).int().float()
+#         topk_xs   = (topk_inds % width).int().float()        
+#     return topk_scores, topk_inds, topk_clses, topk_ys, topk_xs
+
+
 def _topk(scores, K=20):
     if len (scores.shape)==4:
         batch, cat, height, width = scores.size()
         #print(scores.view(batch, -1).shape)
-        topk_scores, topk_inds = torch.topk(scores.view(batch, -1), K)
+#         topk_scores, topk_inds = torch.topk(scores.view(batch, -1), K) #topk_inds = scores.view(batch, -1).sort(descending=True)
+        topk_scores, topk_inds = scores.view(batch, -1).sort(descending=True)
+        
+        topk_scores = topk_scores[:,:K]
+        topk_inds = topk_inds[:,:K]
         topk_clses = (topk_inds / (height * width)).int()
         #print(topk_clses)
         topk_inds = topk_inds % (height * width)
@@ -259,7 +294,6 @@ def _topk(scores, K=20):
         topk_ys   = (topk_inds / width).int().float()
         topk_xs   = (topk_inds % width).int().float()        
     return topk_scores, topk_inds, topk_clses, topk_ys, topk_xs
-
 
 
   
